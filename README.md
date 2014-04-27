@@ -1,4 +1,4 @@
-asio
+axon
 ====
 
-study-driven async io library
+an async io library

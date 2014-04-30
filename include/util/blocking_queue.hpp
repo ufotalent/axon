@@ -9,6 +9,12 @@ namespace util {
 template <typename T>
 class BlockingQueue {
 public:
+    enum BlockingQueueReturnStatus {
+        BlockingQueueSuccess = 0,
+        BlockingQueueClosed = 1,
+        BlockingQueueInterupted = 2
+    };
+   
     BlockingQueue():closed_(false) {
         pthread_mutex_init(&queue_mutex_, NULL);
         pthread_cond_init(&queue_cond_, NULL);
@@ -21,24 +27,30 @@ public:
         pthread_cond_signal(&queue_cond_);
     }
 
-    bool pop_front(T& data) {
+    BlockingQueueReturnStatus pop_front(T& data) {
         ScopedLock lock(&queue_mutex_);
         if (closed_)
-            return false;
-        while (base_queue_.empty()) {
+            return BlockingQueueClosed;
+        if (base_queue_.empty()) {
             if (!closed_) {
                 pthread_cond_wait(&queue_cond_, &queue_mutex_);
             } 
             // Another if because the closed_ variable may be changed by close()
             if (closed_) {
-                return false;
+                return BlockingQueueClosed;
+            }
+            if (base_queue_.empty()) {
+                return BlockingQueueInterupted;
             }
         }
         data = base_queue_.front();
         base_queue_.pop();
-        return true;
+        return BlockingQueueSuccess;
     }
 
+    void notify_all() {
+        pthread_cond_broadcast(&queue_cond_);
+    }
     void close() {
         ScopedLock lock(&queue_mutex_);
         closed_ = true;

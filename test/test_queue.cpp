@@ -27,8 +27,13 @@ public:
 void* read_thread(void* args) {
     QueueTest *test = (QueueTest*)args;
     int r = 0x3fffffff;
-    while (test->queue->pop_front(r)) {
-        test->res[r] = true;
+
+    while (true) {
+        auto ret = test->queue->pop_front(r);
+        if (ret == axon::util::BlockingQueue<int>::BlockingQueueClosed)
+            break;
+        if (ret == axon::util::BlockingQueue<int>::BlockingQueueSuccess)
+            test->res[r] = true;
     }
     return NULL;
 }
@@ -161,8 +166,37 @@ TEST_F(QueueTest, 100_product_100_consume_close_halfway) {
         }
         EXPECT_EQ(res[i], !close[i%nt]);
     }
-    for (int i = 0; i < nt; i++) {
-        printf("thread %d stoped at %d\n", i, where[i]);
-    }
 }
 
+TEST_F(QueueTest, 100_product_100_consume_interuption) {
+    const int nt = 100, nn = 1000000;
+    res.resize(nn, 0);
+    pthread_t thread_read[nt], thread_write[nt];
+    void* arg[nt][4];
+    for (int i = 0; i < nt; i++) {
+        arg[i][0] = this;
+        arg[i][1] = (void*)((long)i);
+        arg[i][2] = (void*)(nt);
+        arg[i][3] = (void*)(nn/nt);
+        pthread_create(&thread_read[i], NULL, &read_thread, this); 
+        pthread_create(&thread_write[i], NULL, &write_thread, arg[i]); 
+    }
+
+    for (int i = 0; i < nt; i++) {
+        pthread_join(thread_write[i], NULL);
+    }
+    printf("waiting for consumer to be done.\n");
+    while (!queue->empty()) {
+        queue->notify_all();
+        usleep(1);
+    }
+    queue->notify_all();
+    queue->close();
+    for (int i = 0; i < nt; i++) {
+        pthread_join(thread_read[i], NULL);
+    }
+
+    for (int i = 0; i < nn; i++) {
+        EXPECT_EQ(res[i], true);
+    }
+}

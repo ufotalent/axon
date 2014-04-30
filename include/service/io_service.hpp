@@ -1,6 +1,6 @@
 #pragma once
-#include "service.hpp"
 
+#include <functional>
 namespace axon {
 namespace service {
 

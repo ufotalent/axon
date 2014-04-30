@@ -19,3 +19,10 @@
 *.exe
 *.out
 *.app
+
+# Vim extensions
+*.swp
+*~
+
+.ycm_extra_conf.py
+.ycm_extra_conf.pyc

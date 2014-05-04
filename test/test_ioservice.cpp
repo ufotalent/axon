@@ -22,10 +22,10 @@ public:
     bool call_flag_;
 };
 
-void* remove_work(void* args) {
+void* poll_thread(void* args) {
     sleep(1);
-    auto work = (axon::service::IOService::Work*) args;
-    delete work;
+    IOServiceTest *test = (IOServiceTest*) args;
+    test->service->poll();
     return NULL;
 }
 
@@ -50,19 +50,42 @@ void* post_thread(void* args) {
     return NULL;
 }
 
+void* post_thread_with_work(void* args) {
+    void** arg = (void**) args;
+    IOServiceTest *test = (IOServiceTest*) arg[0];
+    long offset = (long)arg[1];
+    long interval = (long)arg[2];
+    long num = (long)arg[3];
+    for (int i = 0; i < num; i++) {
+        int res = offset + interval * i;
+        axon::service::IOService::Work *work =  new axon::service::IOService::Work(*test->service);
+        test->service->post([res, work]() {
+            result[res] = true;
+            delete work;
+        });
+    }
+    return NULL;
+}
+
+void* remove_work(void* args) {
+    auto work = (axon::service::IOService::Work*) args;
+    delete work;
+    return NULL;
+}
+
+
 TEST_F(IOServiceTest, single_call_back) {
     service->post([this]() {
         call_flag_ = true;
-    });
-    service->run();
+        });
+    service->run_one();
     EXPECT_EQ(call_flag_, true);
 }
 
 TEST_F(IOServiceTest, single_call_back_work_block) {
     service->post([this]() {
         call_flag_ = true;
-        printf("called\n");
-    });
+        });
     axon::service::IOService::Work *work = new axon::service::IOService::Work(*service);
     pthread_t thread;
     pthread_create(&thread, NULL, &remove_work, work);
@@ -73,26 +96,23 @@ TEST_F(IOServiceTest, single_call_back_work_block) {
 TEST_F(IOServiceTest, one_producer_100_worker) {
     const int nt = 100;
     const int nn = 1000000;
-    axon::service::IOService::Work *work = new axon::service::IOService::Work(*service);
     pthread_t threads[nt];
     for (int i = 0; i < nt; i++) {
-        pthread_create(&threads[i], NULL, run_thread, this);
+        pthread_create(&threads[i], NULL, poll_thread, this);
     }
 
     for (int j = 0; j < nn; j++) {
         service->post([j](){
             result[j] = true;
-        });
+            });
     }
 
     printf("will close\n");
-    pthread_t thread;
-    pthread_create(&thread, NULL, &remove_work, work);
     for (int i = 0; i < nt; i++) {
         pthread_join(threads[i], NULL);
     }
 
-    
+
     for (int i = 0; i < nn; i++) {
         EXPECT_EQ(result[i], true);
     }
@@ -100,7 +120,39 @@ TEST_F(IOServiceTest, one_producer_100_worker) {
 
 TEST_F(IOServiceTest, 100_producer_100_worker) {
     const int nt = 100;
-    const int nn = 1000000;
+    const int nn = 10000000;
+    pthread_t threads[nt];
+    pthread_t threads_post[nt];
+    void* arg[nt][4];
+    for (int i = 0; i < nt; i++) {
+        arg[i][0] = this;
+        arg[i][1] = (void*)((long)i);
+        arg[i][2] = (void*)(nt);
+        arg[i][3] = (void*)(nn/nt);
+        pthread_create(&threads_post[i], NULL, post_thread, arg[i]);
+    }
+    for (int i = 0; i < nt; i++) {
+        pthread_create(&threads[i], NULL, poll_thread, this);
+    }
+
+    for (int i = 0; i < nt; i++) {
+        pthread_join(threads_post[i], NULL);
+    }
+
+    printf("waiting for queue to drain\n");
+    for (int i = 0; i < nt; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+
+    for (int i = 0; i < nn; i++) {
+        EXPECT_EQ(result[i], true);
+    }
+}
+
+TEST_F(IOServiceTest, 100_producer_100_worker_run) {
+    const int nt = 100;
+    const int nn = 10000000;
     axon::service::IOService::Work *work = new axon::service::IOService::Work(*service);
     pthread_t threads[nt];
     pthread_t threads_post[nt];
@@ -125,8 +177,112 @@ TEST_F(IOServiceTest, 100_producer_100_worker) {
         pthread_join(threads[i], NULL);
     }
 
-    
+
     for (int i = 0; i < nn; i++) {
         EXPECT_EQ(result[i], true);
     }
 }
+
+TEST_F(IOServiceTest, 2_producer_2_worker_run_with_work) {
+    const int nt = 2;
+    const int nn = 10000000;
+    axon::service::IOService::Work *work = new axon::service::IOService::Work(*service);
+    pthread_t threads[nt];
+    pthread_t threads_post[nt];
+    void* arg[nt][4];
+    for (int i = 0; i < nt; i++) {
+        arg[i][0] = this;
+        arg[i][1] = (void*)((long)i);
+        arg[i][2] = (void*)(nt);
+        arg[i][3] = (void*)(nn/nt);
+        pthread_create(&threads[i], NULL, run_thread, this);
+        pthread_create(&threads_post[i], NULL, post_thread_with_work, arg[i]);
+    }
+
+    for (int i = 0; i < nt; i++) {
+        pthread_join(threads_post[i], NULL);
+    }
+
+    printf("will close\n");
+    pthread_t thread;
+    pthread_create(&thread, NULL, &remove_work, work);
+    for (int i = 0; i < nt; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+
+    for (int i = 0; i < nn; i++) {
+        EXPECT_EQ(result[i], true);
+    }
+}
+
+
+TEST_F(IOServiceTest, 8_producer_8_worker_run_with_work) {
+    const int nt = 8;
+    const int nn = 10000000;
+    ASSERT_EQ(nn%nt, 0);
+    axon::service::IOService::Work *work = new axon::service::IOService::Work(*service);
+    pthread_t threads[nt];
+    pthread_t threads_post[nt];
+    void* arg[nt][4];
+    for (int i = 0; i < nt; i++) {
+        arg[i][0] = this;
+        arg[i][1] = (void*)((long)i);
+        arg[i][2] = (void*)(nt);
+        arg[i][3] = (void*)(nn/nt);
+        pthread_create(&threads[i], NULL, run_thread, this);
+        pthread_create(&threads_post[i], NULL, post_thread_with_work, arg[i]);
+    }
+
+    for (int i = 0; i < nt; i++) {
+        pthread_join(threads_post[i], NULL);
+    }
+
+    printf("will close\n");
+    pthread_t thread;
+    pthread_create(&thread, NULL, &remove_work, work);
+    for (int i = 0; i < nt; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+
+    for (int i = 0; i < nn; i++) {
+        EXPECT_EQ(result[i], true);
+    }
+}
+
+TEST_F(IOServiceTest, 8_producer_8_worker_run_remove_work_at_last) {
+    const int nt = 8;
+    const int nn = 10000;
+    ASSERT_EQ(nn%nt, 0);
+    axon::service::IOService::Work *work = new axon::service::IOService::Work(*service);
+    pthread_t threads[nt];
+    pthread_t threads_post[nt];
+    void* arg[nt][4];
+    for (int i = 0; i < nt; i++) {
+        arg[i][0] = this;
+        arg[i][1] = (void*)((long)i);
+        arg[i][2] = (void*)(nt);
+        arg[i][3] = (void*)(nn/nt);
+        pthread_create(&threads[i], NULL, run_thread, this);
+        pthread_create(&threads_post[i], NULL, post_thread_with_work, arg[i]);
+    }
+
+    for (int i = 0; i < nt; i++) {
+        pthread_join(threads_post[i], NULL);
+    }
+
+    sleep(10);
+    printf("will close\n");
+    pthread_t thread;
+    pthread_create(&thread, NULL, &remove_work, work);
+    for (int i = 0; i < nt; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+
+    for (int i = 0; i < nn; i++) {
+        EXPECT_EQ(result[i], true);
+    }
+}
+

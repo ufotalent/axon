@@ -10,12 +10,8 @@ namespace service {
 
 class IOService {
 public:
-    IOService() {
-        pthread_mutex_init(&works_mutex_, NULL);
-    }
-    virtual ~IOService() {
-        pthread_mutex_destroy(&works_mutex_);
-    }
+    IOService();
+    virtual ~IOService();
 
     typedef std::function<void()> CallBack;
 
@@ -37,19 +33,24 @@ public:
     };
 
 public:
-    void poll();
     void run();
+    bool run_one();
+    void poll();
+    bool poll_one();
     void post(const CallBack& handler);
     IOService(const IOService &) = delete;
     IOService& operator=(const IOService &) = delete;
-
-private:
     void add_work(Work *work);
     void remove_work(Work *work);
     bool has_work();
-    axon::util::BlockingQueue<CallBack> handler_queue_;
 
-    void dispatch_one();
+    void stop();
+
+private:
+    axon::util::BlockingQueue<CallBack> handler_queue_;
+    bool stoped_;
+    pthread_t notify_thread_;
+    friend void* notify(void*);
     std::set<Work*> works_;
     pthread_mutex_t works_mutex_;
 };

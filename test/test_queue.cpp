@@ -169,7 +169,7 @@ TEST_F(QueueTest, 100_product_100_consume_close_halfway) {
 }
 
 TEST_F(QueueTest, 100_product_100_consume_interuption) {
-    const int nt = 100, nn = 1000000;
+    const int nt = 100, nn = 10000000;
     res.resize(nn, 0);
     pthread_t thread_read[nt], thread_write[nt];
     void* arg[nt][4];
@@ -182,11 +182,17 @@ TEST_F(QueueTest, 100_product_100_consume_interuption) {
         pthread_create(&thread_write[i], NULL, &write_thread, arg[i]); 
     }
 
+    printf("waiting for producer to be done.\n");
+    for (int i = 0; i < 1000; i++)  {
+        queue->notify_all();
+        usleep(1);
+    }
     for (int i = 0; i < nt; i++) {
         pthread_join(thread_write[i], NULL);
     }
     printf("waiting for consumer to be done.\n");
     while (!queue->empty()) {
+        printf("notify\n");
         queue->notify_all();
         usleep(1);
     }

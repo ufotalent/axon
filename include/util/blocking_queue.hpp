@@ -1,6 +1,7 @@
 #pragma once
 #include <pthread.h>
 #include <queue>
+#include <cstdlib>
 #include "lock.hpp"
 
 namespace axon {
@@ -12,7 +13,8 @@ public:
     enum BlockingQueueReturnStatus {
         BlockingQueueSuccess = 0,
         BlockingQueueClosed = 1,
-        BlockingQueueInterupted = 2
+        BlockingQueueDrained = 2,
+        BlockingQueueInterupted= 3,
     };
    
     BlockingQueue():closed_(false) {
@@ -27,6 +29,19 @@ public:
         pthread_cond_signal(&queue_cond_);
     }
 
+    BlockingQueueReturnStatus try_pop_front(T& data) {
+        ScopedLock lock(&queue_mutex_);
+        if (closed_)
+            return BlockingQueueClosed;
+        if (base_queue_.empty()) {
+            return BlockingQueueDrained;
+        }
+        data = base_queue_.front();
+        base_queue_.pop();
+        
+        return BlockingQueueSuccess;
+    }
+
     BlockingQueueReturnStatus pop_front(T& data) {
         ScopedLock lock(&queue_mutex_);
         if (closed_)
@@ -39,29 +54,34 @@ public:
             if (closed_) {
                 return BlockingQueueClosed;
             }
+            // If the queue is still empty, return interupted
             if (base_queue_.empty()) {
                 return BlockingQueueInterupted;
             }
         }
         data = base_queue_.front();
         base_queue_.pop();
+        
         return BlockingQueueSuccess;
     }
 
     void notify_all() {
         pthread_cond_broadcast(&queue_cond_);
     }
+
     void close() {
         ScopedLock lock(&queue_mutex_);
         closed_ = true;
         pthread_cond_broadcast(&queue_cond_);
     }
+
     bool empty() {
         ScopedLock lock(&queue_mutex_);
         if (closed_) 
             return true;
         return base_queue_.empty();
     }
+
     virtual ~BlockingQueue() {
         close();
         pthread_mutex_destroy(&queue_mutex_);

@@ -1,5 +1,6 @@
 #pragma once
 #include <functional>
+#include <memory>
 #include "util/error_code.hpp"
 #include "util/noncopyable.hpp"
 namespace axon {
@@ -24,12 +25,15 @@ public:
     // complete() calls the callback function with error codes
     virtual void complete() = 0;
 
-    Event(int fd, int type): fd_(fd), type_(type) { }
+    Event(int fd, int type): fd_(fd), type_(type), ec_(axon::util::ErrorCode::operation_canceled) { }
     virtual ~Event() {}
+
+    typedef std::shared_ptr<Event> Ptr;
 
 protected:
     int fd_;
     int type_;
+    axon::util::ErrorCode ec_;
 
 };
 

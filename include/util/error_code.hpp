@@ -10,6 +10,7 @@ public:
         success = 0,
         timed_out = 1,
         socket_closed = 2,
+        operation_canceled = 3,
         unknown = 100
 
     };

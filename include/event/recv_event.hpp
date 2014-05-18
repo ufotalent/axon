@@ -14,7 +14,6 @@ public:
     typedef std::function<void(const axon::util::ErrorCode&, size_t)> CallBack;
 
     RecvEvent(int fd, int type, BufferType &buffer, CallBack callback): Event(fd, type), buffer_(buffer), callback_(callback) {
-        ec_ = axon::util::ErrorCode::unknown;
         bytes_transfered_ = 0;
     }
 
@@ -51,7 +50,6 @@ private:
     BufferType& buffer_;
     CallBack callback_;
 
-    axon::util::ErrorCode ec_;
     size_t bytes_transfered_;
 
 };

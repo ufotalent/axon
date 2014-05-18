@@ -25,13 +25,12 @@ void* notify(void* arg) {
 }
 
 IOService::IOService():stoped_(false) {
+    work_count_.store(0);
     pthread_create(&notify_thread_, NULL, &notify, this);
-    pthread_mutex_init(&works_mutex_, NULL);
 }
 
 IOService::~IOService() {
     stop();
-    pthread_mutex_destroy(&works_mutex_);
 }
 
 void IOService::post(const IOService::CallBack& handler) {
@@ -102,20 +101,14 @@ void IOService::stop() {
     handler_queue_.close();
 }
 
-void IOService::add_work(Work *work) {
-    axon::util::ScopedLock lock(&works_mutex_);
-    works_.insert(work);
+void IOService::add_work() {
+    work_count_++;
 }
 
-void IOService::remove_work(Work *work) {
-    axon::util::ScopedLock lock(&works_mutex_);
-    if (!works_.count(work)) {
-        throw std::runtime_error("no this work");
-    }
-    works_.erase(work);
+void IOService::remove_work() {
+    work_count_--;
 }
 
 bool IOService::has_work() {
-    axon::util::ScopedLock lock(&works_mutex_);
-    return !works_.empty();
+    return work_count_ != 0;
 }

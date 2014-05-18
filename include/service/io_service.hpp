@@ -3,6 +3,7 @@
 #include <pthread.h>
 #include <functional>
 #include <set>
+#include <atomic>
 #include "util/blocking_queue.hpp"
 #include "util/lock.hpp"
 namespace axon {
@@ -21,10 +22,10 @@ public:
     class Work {
     public:
         Work(IOService &service):service_(service) {
-            service_.add_work(this);
+            service_.add_work();
         }
         virtual ~Work() {
-            service_.remove_work(this);
+            service_.remove_work();
         }
         Work(const Work&) = delete;
         Work& operator=(const Work&) = delete;
@@ -40,8 +41,8 @@ public:
     void post(const CallBack& handler);
     IOService(const IOService &) = delete;
     IOService& operator=(const IOService &) = delete;
-    void add_work(Work *work);
-    void remove_work(Work *work);
+    void add_work();
+    void remove_work();
     bool has_work();
 
     void stop();
@@ -51,8 +52,8 @@ private:
     bool stoped_;
     pthread_t notify_thread_;
     friend void* notify(void*);
-    std::set<Work*> works_;
-    pthread_mutex_t works_mutex_;
+
+    std::atomic_int work_count_;
 };
 
 

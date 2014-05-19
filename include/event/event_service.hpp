@@ -25,8 +25,8 @@ public:
             pthread_mutex_destroy(&mutex);
         }
 
-        pthread_mutex_t mutex;
         int fd;
+        pthread_mutex_t mutex;
         int polled_events;
         axon::service::IOService* io_service;
         std::queue<Event::Ptr> event_queues[Event::EVENT_TYPE_COUNT];
@@ -46,10 +46,13 @@ public:
     void start();
     void run_loop();
     void stop();
+    void interrupt();
 
 private:
     int epoll_fd_;
     pthread_t run_thread;
+    bool closed_;
+    int interrupt_fd_[2];
 
     // std::vector<fd_event*> fd_events_;
     // fd_event* create_fd_event(int fd);

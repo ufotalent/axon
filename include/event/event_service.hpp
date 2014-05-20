@@ -3,12 +3,13 @@
 #include <map>
 #include "service/io_service.hpp"
 #include "event/event.hpp"
+
+void* launch_run_loop(void*);
 namespace axon {
 namespace event {
 
-class EventService {
+class EventService : public axon::util::Noncopyable {
 public:
-    EventService();
     ~EventService();
 
     struct fd_event {
@@ -43,12 +44,21 @@ public:
     
     bool register_fd(int fd, fd_event* event);
     void start_event(Event::Ptr event, fd_event* fd_ev);
+    friend void* ::launch_run_loop(void*);
+
+    // Note that static initializer is synchronized after c++11
+    static EventService& get_instance() {
+        static EventService instance;
+        return instance;
+    } 
+
+private:
+    EventService();
     void start();
     void run_loop();
     void stop();
     void interrupt();
 
-private:
     int epoll_fd_;
     pthread_t run_thread;
     bool closed_;

@@ -221,8 +221,7 @@ TEST_F(EventTest, recv_with_service) {
             }));
 
     io_service = new IOService();
-    ev_service = new EventService();
-    ev_service->start();
+    ev_service = &EventService::get_instance();
 
     {
         EventService::fd_event fd_ev(read_fd, io_service);
@@ -232,7 +231,6 @@ TEST_F(EventTest, recv_with_service) {
     }
     pthread_join(thread, NULL);
     delete io_service;
-    delete ev_service;
 
 }
 
@@ -264,8 +262,7 @@ TEST_F(EventTest, sequential_recv_with_service) {
     // First read should return false because write delays 1s
 
     io_service = new IOService();
-    ev_service = new EventService();
-    ev_service->start();
+    ev_service = &EventService::get_instance();
 
 
     {
@@ -290,7 +287,6 @@ TEST_F(EventTest, sequential_recv_with_service) {
     }
     pthread_join(thread, NULL);
     delete io_service;
-    delete ev_service;
 
 }
 TEST_F(EventTest, multiple_socket_sequential_recv_with_service) {
@@ -311,8 +307,7 @@ TEST_F(EventTest, multiple_socket_sequential_recv_with_service) {
     // First read should return false because write delays 1s
 
     io_service = new IOService();
-    ev_service = new EventService();
-    ev_service->start();
+    ev_service = &EventService::get_instance();
 
 
     EventService::fd_event* fd_evs[socket_cnt];
@@ -341,7 +336,6 @@ TEST_F(EventTest, multiple_socket_sequential_recv_with_service) {
     for (int i = 0; i < socket_cnt; i++)
         pthread_join(thread[i], NULL);
     delete io_service;
-    delete ev_service;
 
 }
 

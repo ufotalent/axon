@@ -24,6 +24,7 @@ EventService::EventService():closed_(false) {
     if (epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, interrupt_fd_[0], &ev) != 0)  {
         throw std::runtime_error("interrupter registeration failed");
     }
+    start();
 }
 
 EventService::~EventService() {

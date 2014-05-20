@@ -3,13 +3,14 @@
 #include <vector>
 #include <stdexcept>
 #include "util/noncopyable.hpp"
+#include "util/buffer.hpp"
 
 
 namespace axon {
 namespace util {
 
 template <typename T>
-class NonfreeSequenceBuffer : public Noncopyable{
+class NonfreeSequenceBuffer : public SequenceBuffer<T>, public Noncopyable {
 public:
     NonfreeSequenceBuffer() {
         data_.resize(1);

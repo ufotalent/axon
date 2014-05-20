@@ -14,7 +14,7 @@ int sfd;
 int read_fd;
 int write_fd;
 const int write_size = 1004;
-const int max_write_cnt = 10087;
+const int max_write_cnt = 5087;
 const int socket_cnt = 100;
 int read_fds[socket_cnt];
 int write_fds[socket_cnt];
@@ -224,10 +224,11 @@ TEST_F(EventTest, recv_with_service) {
     ev_service = &EventService::get_instance();
 
     {
-        EventService::fd_event fd_ev(read_fd, io_service);
-        ev_service->register_fd(read_fd, &fd_ev);
-        ev_service->start_event(event, &fd_ev);
+        EventService::fd_event::Ptr fd_ev = std::make_shared<EventService::fd_event>(read_fd, io_service);
+        ev_service->register_fd(read_fd, fd_ev);
+        ev_service->start_event(event, fd_ev);
         io_service->run();
+        ev_service->unregister_fd(read_fd, fd_ev);
     }
     pthread_join(thread, NULL);
     delete io_service;
@@ -235,7 +236,7 @@ TEST_F(EventTest, recv_with_service) {
 }
 
 
-void call_back(NonfreeSequenceBuffer<char>* buf, EventService::fd_event* fd_ev, const ErrorCode& ec, size_t sz) {
+void call_back(NonfreeSequenceBuffer<char>* buf, EventService::fd_event::Ptr fd_ev, const ErrorCode& ec, size_t sz) {
     if (!ec) {
         buf->prepare(100);
         Event::Ptr ev(new RecvEvent<NonfreeSequenceBuffer<char> >(
@@ -266,17 +267,18 @@ TEST_F(EventTest, sequential_recv_with_service) {
 
 
     {
-        EventService::fd_event fd_ev(read_fd, io_service);
-        ev_service->register_fd(read_fd, &fd_ev);
+        EventService::fd_event::Ptr fd_ev = std::make_shared<EventService::fd_event>(read_fd, io_service);
+        ev_service->register_fd(read_fd, fd_ev);
         Event::Ptr ev(new RecvEvent<NonfreeSequenceBuffer<char> >(
                 read_fd,
                 axon::event::Event::EVENT_TYPE_READ,
                 buf,
-                std::bind(&call_back, &buf, &fd_ev, std::placeholders::_1, std::placeholders::_2)
+                std::bind(&call_back, &buf, fd_ev, std::placeholders::_1, std::placeholders::_2)
                 )
             );
-        ev_service->start_event(ev, &fd_ev);
+        ev_service->start_event(ev, fd_ev);
         io_service->run();
+        ev_service->unregister_fd(read_fd, fd_ev);
     }
     char *p = buf.read_head();
     for (int i = 0; i < max_write_cnt; i++) {
@@ -300,7 +302,6 @@ TEST_F(EventTest, multiple_socket_sequential_recv_with_service) {
         pthread_create(&thread[i], NULL, &socket_multiple_write_thread, (void*)(long)i);
         read_fds[i] = Accept();
         buf[i].prepare(100);
-        printf("%d accepted\n", i);
     }
 
 
@@ -310,9 +311,9 @@ TEST_F(EventTest, multiple_socket_sequential_recv_with_service) {
     ev_service = &EventService::get_instance();
 
 
-    EventService::fd_event* fd_evs[socket_cnt];
+    EventService::fd_event::Ptr fd_evs[socket_cnt];
     for (int i = 0; i <socket_cnt; i++) {
-        fd_evs[i] = new EventService::fd_event(read_fds[i], io_service);
+        fd_evs[i].reset(new EventService::fd_event(read_fds[i], io_service));
         ev_service->register_fd(read_fds[i],fd_evs[i]);
         Event::Ptr ev(new RecvEvent<NonfreeSequenceBuffer<char> >(
                 read_fds[i],
@@ -322,8 +323,8 @@ TEST_F(EventTest, multiple_socket_sequential_recv_with_service) {
                 )
             );
         ev_service->start_event(ev, fd_evs[i]);
-        io_service->run();
     }
+    io_service->run();
     for (int s = 0; s < socket_cnt; s++) {
         char *p = buf[s].read_head();
         for (int i = 0; i < max_write_cnt; i++) {
@@ -333,9 +334,85 @@ TEST_F(EventTest, multiple_socket_sequential_recv_with_service) {
             }
         }
     }
+    for (int i = 0; i < socket_cnt; i++) {
+        ev_service->unregister_fd(read_fds[i], fd_evs[i]);
+        pthread_join(thread[i], NULL);
+    }
+    delete io_service;
+
+}
+
+
+void* run_thread_ev(void* args) {
+    IOService *service = (IOService*) args;
+    service->run();
+    return NULL;
+}
+TEST_F(EventTest, multiple_socket_sequential_recv_with_service_unregister_halfway) {
+    Listen();
+
+    read_fd = -1;
+    pthread_t thread[socket_cnt];
+    pthread_t threadr[socket_cnt];
+
+    NonfreeSequenceBuffer<char> buf[socket_cnt];
+    for (int i = 0; i < socket_cnt; i++) {
+        pthread_create(&thread[i], NULL, &socket_multiple_write_thread, (void*)(long)i);
+        read_fds[i] = Accept();
+        buf[i].prepare(100);
+    }
+
+
+    // First read should return false because write delays 1s
+
+    io_service = new IOService();
+    ev_service = &EventService::get_instance();
+
+
+    EventService::fd_event::Ptr fd_evs[socket_cnt];
+    for (int i = 0; i <socket_cnt; i++) {
+        fd_evs[i].reset(new EventService::fd_event(read_fds[i], io_service));
+        ev_service->register_fd(read_fds[i],fd_evs[i]);
+        Event::Ptr ev(new RecvEvent<NonfreeSequenceBuffer<char> >(
+                read_fds[i],
+                axon::event::Event::EVENT_TYPE_READ,
+                buf[i],
+                std::bind(&call_back, &buf[i], fd_evs[i], std::placeholders::_1, std::placeholders::_2)
+                )
+            );
+        ev_service->start_event(ev, fd_evs[i]);
+    }
+    for (int i = 0; i < socket_cnt; i++) {
+        pthread_create(&threadr[i], NULL, &run_thread_ev, (void*)(io_service));
+    }
+    
+    sleep(3);
+    for (int i = 0; i < socket_cnt; i++) {
+        ev_service->unregister_fd(read_fds[i], fd_evs[i]);
+    }
+    
+    for (int i = 0; i < socket_cnt; i++)
+        pthread_join(threadr[i], NULL);
+
+    for (int s = 0; s < socket_cnt; s++) {
+        char *p = buf[s].read_head();
+        for (int i = 0; i < max_write_cnt; i++) {
+            for (int j = 0; j < write_size; j++) {
+                
+                if (*p == 0 && ((i+s) % 128 != 0) ) {
+                    printf("stop at %ld\n", p-buf[s].read_head());
+                    goto bexit;
+                }
+
+                EXPECT_EQ(*p, (i+s) % 128);
+                p++;
+            }
+        }
+bexit:
+        continue;
+    }
     for (int i = 0; i < socket_cnt; i++)
         pthread_join(thread[i], NULL);
     delete io_service;
-
 }
 

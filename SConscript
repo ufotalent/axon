@@ -23,7 +23,8 @@ test_env = libaxon_env.Clone()
 test_env.Append(
         LIBPATH = ['.'],
         LIBS = ['axon'],
-        CPPPATH = ['usr/src/gtest/']
+        CPPPATH = ['usr/src/gtest/'],
+        LINKFLAGS = ['-Wl,-rpath=\$$ORIGIN/../']
         )
 test_files = Glob('test/*.cpp')
 test_env.Repository('/usr/src/gtest/')

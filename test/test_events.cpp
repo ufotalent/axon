@@ -397,15 +397,23 @@ TEST_F(EventTest, multiple_socket_sequential_recv_with_service_unregister_halfwa
     for (int s = 0; s < socket_cnt; s++) {
         char *p = buf[s].read_head();
         for (int i = 0; i < max_write_cnt; i++) {
+            bool fail = false;
             for (int j = 0; j < write_size; j++) {
                 
-                if (*p == 0 && ((i+s) % 128 != 0) ) {
+                if ( p >= buf[s].write_head() || ( *p == 0 && ((i+s) % 128 != 0)) ) {
                     printf("stop at %ld\n", p-buf[s].read_head());
                     goto bexit;
                 }
 
+                if (*p != (i+s)%128) {
+                    printf("is %d %d\n", i, s);
+                    fail = true;
+                }
                 EXPECT_EQ(*p, (i+s) % 128);
                 p++;
+            }
+            if (fail) {
+                printf("socket %d write %d misalign\n", s, i);
             }
         }
 bexit:

@@ -10,9 +10,11 @@ libaxon_env = base_env.Clone()
 
 libaxon_files = Glob('src/*.cpp')
 libaxon_files += Glob('src/*/*.cpp')
+libaxon_files += Glob('src/*/*/*.cpp')
 
 libaxon_headers = Glob('src/*.hpp')
 libaxon_headers += Glob('src/*/*.hpp')
+libaxon_headers += Glob('src/*/*/*.hpp')
 libaxon_env.Local(libaxon_headers)
 
 libaxon_target = libaxon_env.SharedLibrary('axon', libaxon_files)

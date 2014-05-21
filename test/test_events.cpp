@@ -9,6 +9,7 @@
 #include "util/nonfree_sequence_buffer.hpp"
 #include "event/event_service.hpp"
 
+namespace {
 std::string data = "test data";
 int sfd;
 int read_fd;
@@ -18,6 +19,7 @@ const int max_write_cnt = 5087;
 const int socket_cnt = 100;
 int read_fds[socket_cnt];
 int write_fds[socket_cnt];
+}
 using namespace axon::util;
 using namespace axon::event;
 using namespace axon::service;
@@ -49,7 +51,7 @@ protected:
     int Accept() {
         sockaddr_in peer;
         socklen_t peer_len = sizeof(peer);
-        int rfd = accept4(sfd, (sockaddr*)&peer, &peer_len, SOCK_NONBLOCK);
+        int rfd = accept(sfd, (sockaddr*)&peer, &peer_len);
         if (rfd < 0)
             throw std::runtime_error("accept failed");
         return rfd;
@@ -59,7 +61,7 @@ public:
 };
 
 
-void* socket_write_thread(void* ) {
+void* event_write_thread(void* ) {
     write_fd = socket(AF_INET, SOCK_STREAM, 0);
     sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
@@ -89,7 +91,7 @@ void* socket_write_thread(void* ) {
     return NULL;
 }
 
-void* socket_multiple_write_thread(void* args) {
+void* event_multiple_write_thread(void* args) {
     long offset = (long) args;
     write_fds[offset] = socket(AF_INET, SOCK_STREAM, 0);
     sockaddr_in addr;
@@ -124,7 +126,7 @@ TEST_F(EventTest, recv_ev) {
     Listen();
 
     pthread_t thread;
-    pthread_create(&thread, NULL, &socket_write_thread, NULL);
+    pthread_create(&thread, NULL, &event_write_thread, NULL);
 
     read_fd = Accept();
 
@@ -151,7 +153,7 @@ TEST_F(EventTest, recv_empty_close) {
     Listen();
 
     pthread_t thread;
-    pthread_create(&thread, NULL, &socket_write_thread, NULL);
+    pthread_create(&thread, NULL, &event_write_thread, NULL);
 
     read_fd = Accept();
 
@@ -195,7 +197,7 @@ TEST_F(EventTest, recv_with_service) {
     Listen();
 
     pthread_t thread;
-    pthread_create(&thread, NULL, &socket_write_thread, NULL);
+    pthread_create(&thread, NULL, &event_write_thread, NULL);
 
     read_fd = Accept();
 
@@ -254,7 +256,7 @@ TEST_F(EventTest, sequential_recv_with_service) {
     Listen();
 
     pthread_t thread;
-    pthread_create(&thread, NULL, &socket_multiple_write_thread, NULL);
+    pthread_create(&thread, NULL, &event_multiple_write_thread, NULL);
 
     read_fd = Accept();
 
@@ -299,7 +301,7 @@ TEST_F(EventTest, multiple_socket_sequential_recv_with_service) {
 
     NonfreeSequenceBuffer<char> buf[socket_cnt];
     for (int i = 0; i < socket_cnt; i++) {
-        pthread_create(&thread[i], NULL, &socket_multiple_write_thread, (void*)(long)i);
+        pthread_create(&thread[i], NULL, &event_multiple_write_thread, (void*)(long)i);
         read_fds[i] = Accept();
         buf[i].prepare(100);
     }
@@ -357,7 +359,7 @@ TEST_F(EventTest, multiple_socket_sequential_recv_with_service_unregister_halfwa
 
     NonfreeSequenceBuffer<char> buf[socket_cnt];
     for (int i = 0; i < socket_cnt; i++) {
-        pthread_create(&thread[i], NULL, &socket_multiple_write_thread, (void*)(long)i);
+        pthread_create(&thread[i], NULL, &event_multiple_write_thread, (void*)(long)i);
         read_fds[i] = Accept();
         buf[i].prepare(100);
     }

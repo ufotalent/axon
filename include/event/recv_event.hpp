@@ -19,7 +19,7 @@ public:
 
     bool perform() {
         ssize_t br = ::recv(fd_, buffer_.write_head(), buffer_.write_size(), MSG_DONTWAIT);
-        if (br > 0) {
+        if (br > 0 || (buffer_.write_size() == 0 && br == 0)) {
             buffer_.accept(br);
             ec_ = axon::util::ErrorCode::success;
             bytes_transfered_ += br;

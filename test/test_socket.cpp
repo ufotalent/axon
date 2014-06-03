@@ -97,6 +97,32 @@ void* socket_multiple_write_thread(void* args) {
     return NULL;
 }
 
+void* socket_read_thread(void*) {
+    read_fd = socket(AF_INET, SOCK_STREAM, 0);
+    sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port =  htons(10086);
+    inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
+    while (true) {
+        if (connect(read_fd, (sockaddr*)&addr, sizeof(addr))==0) {
+            break;
+        }
+    };
+    while (rand() % 32!=0);
+    for (int cnt = 0; cnt < 1; cnt++) {
+        char buf[255];
+        int sz = recv(read_fd, buf, 100, ::MSG_NOSIGNAL);
+        if (sz <= 0) {
+            printf("recv error: %d en:%d\n", sz, errno);
+            return NULL;
+        }
+        printf("read %d bytes\n", sz);
+    }
+    close(read_fd);
+    return NULL;
+}
+
 
 TEST_F(SocketTest, recv) {
 
@@ -123,4 +149,32 @@ TEST_F(SocketTest, recv) {
 
 }
 
+TEST_F(SocketTest, send) {
 
+    pthread_t thread;
+    pthread_create(&thread, NULL, &socket_read_thread, NULL);
+
+    IOService service;
+    Socket sock(&service);
+    Acceptor acceptor;
+    acceptor.bind("127.0.0.1", 10086);
+    acceptor.listen();
+    acceptor.accept(sock);
+
+    while (rand() % 32 !=0);
+    bool run = false;
+    NonfreeSequenceBuffer<char> buf;
+    buf.prepare(100);
+    strcpy(buf.write_head(), data.c_str());  
+    buf.accept(data.size()); 
+    printf("send %d bytes\n", buf.read_size());
+    sock.async_send(buf, [&buf, &run](const ErrorCode &ec, size_t sz) {
+            run = true;
+            printf("send ec: %d\n", ec.code());
+        });
+    service.run();
+    EXPECT_EQ(run , true);
+    pthread_join(thread, NULL);
+
+
+}

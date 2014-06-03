@@ -14,6 +14,7 @@ public:
     Socket(axon::service::IOService* io_service);
     ~Socket();
     void async_recv(Buffer& buf, CallBack callback);
+    void async_send(Buffer& buf, CallBack callback);
 
     void assign(int fd);
     void shutdown();

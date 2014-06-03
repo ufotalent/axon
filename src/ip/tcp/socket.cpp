@@ -3,6 +3,7 @@
 #include "ip/tcp/socket.hpp"
 #include "service/io_service.hpp"
 #include "event/recv_event.hpp"
+#include "event/send_event.hpp"
 
 using namespace axon::event;
 using namespace axon::service;
@@ -41,6 +42,17 @@ void Socket::async_recv(Buffer& buf,  CallBack callback) {
     axon::event::RecvEvent<Buffer>::Ptr ev(new axon::event::RecvEvent<Buffer>(
             fd_, 
             axon::event::Event::EVENT_TYPE_READ,
+            buf,
+            callback));
+    ev_service_->start_event(ev, fd_ev_);
+}
+
+void Socket::async_send(Buffer& buf,  CallBack callback) {
+    //512 => Magic Number?? related to system buffer
+    buf.prepare(512);
+    axon::event::SendEvent<Buffer>::Ptr ev(new axon::event::SendEvent<Buffer>(
+            fd_, 
+            axon::event::Event::EVENT_TYPE_WRITE,
             buf,
             callback));
     ev_service_->start_event(ev, fd_ev_);

@@ -22,12 +22,9 @@ public:
         code_ = static_cast<error_code_t>(code);
     }
 
-    operator bool() const {
-        return (code_ == success);
-    }
-
-    bool operator! () const {
-        return (code_ == success);
+    
+    operator int() const {
+        return code();
     }
 
     int code() const {

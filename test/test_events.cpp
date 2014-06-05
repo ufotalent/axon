@@ -114,6 +114,12 @@ void* event_multiple_write_thread(void* args) {
         if (sz <= 0) {
             return NULL;
         }
+        while (sz != write_size) {
+            int ret = send(write_fds[offset], buf+sz, write_size-sz, ::MSG_NOSIGNAL);
+            if (ret < 0)
+                return NULL;
+            sz += ret;
+        }
     }
     usleep(100*100);
     // close at 0.3s
@@ -293,11 +299,16 @@ TEST_F(EventTest, sequential_recv_with_service) {
     delete io_service;
 
 }
+void* run_thread_ev(void* args) {
+    IOService *service = (IOService*) args;
+    service->run();
+    return NULL;
+}
 TEST_F(EventTest, multiple_socket_sequential_recv_with_service) {
     Listen();
 
     read_fd = -1;
-    pthread_t thread[socket_cnt];
+    pthread_t thread[socket_cnt], threadr[socket_cnt];
 
     NonfreeSequenceBuffer<char> buf[socket_cnt];
     for (int i = 0; i < socket_cnt; i++) {
@@ -326,7 +337,12 @@ TEST_F(EventTest, multiple_socket_sequential_recv_with_service) {
             );
         ev_service->start_event(ev, fd_evs[i]);
     }
-    io_service->run();
+    for (int i = 0; i < socket_cnt; i++) {
+        pthread_create(&threadr[i], NULL, &run_thread_ev, (void*)(io_service));
+    }
+
+    for (int i = 0; i < socket_cnt; i++)
+        pthread_join(threadr[i], NULL);
     for (int s = 0; s < socket_cnt; s++) {
         char *p = buf[s].read_head();
         for (int i = 0; i < max_write_cnt; i++) {
@@ -345,11 +361,6 @@ TEST_F(EventTest, multiple_socket_sequential_recv_with_service) {
 }
 
 
-void* run_thread_ev(void* args) {
-    IOService *service = (IOService*) args;
-    service->run();
-    return NULL;
-}
 TEST_F(EventTest, multiple_socket_sequential_recv_with_service_unregister_halfway) {
     Listen();
 

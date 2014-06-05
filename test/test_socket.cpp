@@ -16,7 +16,7 @@ int read_fd;
 int write_fd;
 const int write_size = 1004;
 const int max_write_cnt = 5087;
-const int socket_cnt = 100;
+const int socket_cnt = 110;
 int read_fds[socket_cnt];
 int write_fds[socket_cnt];
 }
@@ -41,7 +41,7 @@ public:
 };
 
 
-void* socket_write_thread(void* ) {
+void* socket_write_thread(void* args) {
     write_fd = socket(AF_INET, SOCK_STREAM, 0);
     sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
@@ -54,6 +54,15 @@ void* socket_write_thread(void* ) {
         }
     };
     while (rand() % 32!=0);
+
+    if ((size_t)args == 1) {
+        close(write_fd);
+        printf("directly closing socket\n");
+        return NULL;
+    }
+
+    usleep(10000);
+    // write at 1s
     for (int cnt = 0; cnt < 1; cnt++) {
         char buf[255];
         strcpy(buf, data.c_str());
@@ -90,6 +99,12 @@ void* socket_multiple_write_thread(void* args) {
         if (sz <= 0) {
             return NULL;
         }
+        while (sz != write_size) {
+            int ret = send(write_fds[offset], buf+sz, write_size-sz, ::MSG_NOSIGNAL);
+            if (ret < 0)
+                return NULL;
+            sz += ret;
+        }
     }
     usleep(100*100);
     // close at 0.3s
@@ -123,9 +138,15 @@ void* socket_read_thread(void*) {
     return NULL;
 }
 
+void* socket_shutdown_thread(void* args) {
+    Socket *sock = (Socket*)args;
+    usleep(5000);
+    sock->shutdown();
+    return NULL;
+}
+
 
 TEST_F(SocketTest, recv) {
-
     pthread_t thread;
     pthread_create(&thread, NULL, &socket_write_thread, NULL);
 
@@ -146,8 +167,117 @@ TEST_F(SocketTest, recv) {
     service.run();
     EXPECT_EQ(run , true);
     pthread_join(thread, NULL);
-
 }
+
+TEST_F(SocketTest, recv_remote_close) {
+    pthread_t thread;
+    pthread_create(&thread, NULL, &socket_write_thread, (void*)(size_t)1);
+
+    IOService service;
+    Socket sock(&service);
+    Acceptor acceptor;
+    acceptor.bind("127.0.0.1", 10086);
+    acceptor.listen();
+    acceptor.accept(sock);
+
+    // wait for remote to close
+    sleep(1);
+    while (rand() % 32 !=0);
+    bool run = false;
+    NonfreeSequenceBuffer<char> buf;
+    sock.async_recv(buf, [&buf, &run](const ErrorCode &ec, size_t sz) {
+            run = true;
+            EXPECT_EQ(ec, ErrorCode::socket_closed);
+            printf("recv %lu bytes ec %d\n", buf.read_size(), ec.code());
+        });
+    service.run();
+    EXPECT_EQ(run , true);
+    pthread_join(thread, NULL);
+}
+
+TEST_F(SocketTest, recv_cancel) {
+    pthread_t thread;
+    pthread_create(&thread, NULL, &socket_write_thread, NULL);
+
+    IOService service;
+    Socket sock(&service);
+    Acceptor acceptor;
+    acceptor.bind("127.0.0.1", 10086);
+    acceptor.listen();
+    acceptor.accept(sock);
+
+    pthread_t thread_shutdown;
+    pthread_create(&thread_shutdown, NULL, &socket_shutdown_thread, &sock);
+
+    while (rand() % 32 !=0);
+    bool run = false;
+    NonfreeSequenceBuffer<char> buf;
+    sock.async_recv(buf, [&buf, &run](const ErrorCode &ec, size_t sz) {
+            run = true;
+            EXPECT_EQ(ec, ErrorCode::operation_canceled);
+            printf("recv %lu bytes ec %d\n", buf.read_size(), ec.code());
+        });
+    service.run();
+    EXPECT_EQ(run , true);
+    pthread_join(thread, NULL);
+    pthread_join(thread_shutdown, NULL);
+}
+
+void start_recv(Socket& socket, NonfreeSequenceBuffer<char>& buf, const ErrorCode& ec, size_t sz) {
+    if (!ec) {
+        socket.async_recv(buf, [&socket, &buf](const ErrorCode& ec, size_t sz) {
+            start_recv(socket, buf, ec, sz)    ;
+        });
+    }
+}
+namespace {
+void* run_thread(void * args) {
+    IOService* service = (IOService*)args;
+    service->run();
+    return 0;
+}
+}
+
+TEST_F(SocketTest, multiple_socket_recv) {
+    IOService service;
+    Acceptor acceptor;
+    acceptor.bind("127.0.0.1", 10086);
+    acceptor.listen();
+
+    pthread_t threads[socket_cnt], run_threads[socket_cnt];
+    NonfreeSequenceBuffer<char> buffers[socket_cnt];
+    std::vector<Socket> sockets(socket_cnt, &service);
+    for (int i = 0; i < socket_cnt; i++) {
+        pthread_create(&threads[i], NULL, &socket_multiple_write_thread, (void*)(size_t)(i));
+        acceptor.accept(sockets[i]);
+    }
+
+    for (int i = 0; i < socket_cnt; i++) {
+        start_recv(sockets[i], buffers[i], ErrorCode::success, 0);
+    }
+    for (int i = 0; i < socket_cnt; i++) {
+        pthread_create(&run_threads[i], NULL, &run_thread, (void*)(&service));
+    }
+    for (int i = 0; i < socket_cnt; i++) {
+        pthread_join(run_threads[i], NULL);
+    }
+
+    for (int s = 0; s < socket_cnt; s++) {
+        EXPECT_EQ(buffers[s].read_size(), max_write_cnt * write_size);
+        char *p = buffers[s].read_head();
+        for (int i = 0; i < max_write_cnt; i++) {
+            for (int j = 0; j < write_size; j++) {
+                EXPECT_EQ(*p, (i+s) % 128);
+                p++;
+            }
+        }
+    }
+    for (int i = 0; i < socket_cnt; i++) {
+        pthread_join(threads[i], NULL);
+    }
+}
+
+
 
 TEST_F(SocketTest, send) {
 
@@ -167,7 +297,7 @@ TEST_F(SocketTest, send) {
     buf.prepare(100);
     strcpy(buf.write_head(), data.c_str());  
     buf.accept(data.size()); 
-    printf("send %d bytes\n", buf.read_size());
+    printf("send %lu bytes\n", buf.read_size());
     sock.async_send(buf, [&buf, &run](const ErrorCode &ec, size_t sz) {
             run = true;
             printf("send ec: %d\n", ec.code());

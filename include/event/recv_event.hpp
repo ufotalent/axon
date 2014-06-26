@@ -46,7 +46,7 @@ public:
         callback_(ec_, bytes_transfered_);
     }
 
-private:
+protected:
     BufferType& buffer_;
     CallBack callback_;
 

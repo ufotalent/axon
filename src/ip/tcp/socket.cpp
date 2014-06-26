@@ -37,6 +37,7 @@ Socket::~Socket() {
     ev_service_ = NULL;
 }
 
+/*
 void Socket::async_recv(Buffer& buf,  CallBack callback) {
     buf.prepare(512);
     axon::event::RecvEvent<Buffer>::Ptr ev(new axon::event::RecvEvent<Buffer>(
@@ -57,3 +58,4 @@ void Socket::async_send(Buffer& buf,  CallBack callback) {
             callback));
     ev_service_->start_event(ev, fd_ev_);
 }
+*/

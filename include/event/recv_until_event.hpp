@@ -15,7 +15,8 @@ public:
     RecvUntilEvent(int fd, int type, BufferType &buffer, CallBack callback, CompletionCondition condition): 
         BaseType(fd, type, buffer, callback), 
         condition_(condition) {
-
+        data_head_ = buffer.write_head() - buffer.read_head();
+        last_check_ = 0;
     }
 
     bool perform() {
@@ -25,10 +26,11 @@ public:
             }
             if (!BaseType::perform()) 
                 break;
-            // printf("true until: ec %d bt %lu\n", this->ec_, this->bytes_transfered_);
-            if (condition_(this->ec_, this->bytes_transfered_)) {
+            printf("true until: ec %d bt %lu\n", this->ec_, this->bytes_transfered_);
+            if (this->ec_ || condition_(this->ec_, this->bytes_transfered_, this->buffer_.read_head() + data_head_, last_check_)) {
                 return true;
             }
+            last_check_ = this->bytes_transfered_;
         }
 
         // printf("false until: ec %d bt %lu\n", this->ec_, this->bytes_transfered_);
@@ -37,6 +39,8 @@ public:
 
 protected:
     CompletionCondition condition_;
+    ssize_t data_head_;
+    ssize_t last_check_;
 
 };
 

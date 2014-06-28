@@ -11,6 +11,8 @@ namespace util {
 template <typename T>
 class SequenceBuffer {
 public:
+    typedef T ElementType;
+
     virtual T* read_head() = 0; 
 
     virtual T* write_head() = 0; 

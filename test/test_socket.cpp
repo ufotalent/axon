@@ -95,7 +95,7 @@ void* socket_write_alot_thread(void* args) {
     while (true) {
         cnt++;
         char buf[256];
-        memset(buf, cnt % 255, sizeof(buf));
+        memset(buf, cnt % 127, sizeof(buf));
         int sz = send(write_fd, buf, 256, ::MSG_NOSIGNAL);
         if (sz <= 0) {
             return NULL;
@@ -225,13 +225,15 @@ TEST_F(SocketTest, recv_until) {
             printf("recv %lu bytes ec %d\n", buf.read_size(), ec.code());
             // the socket should be closed
             EXPECT_EQ(ec, ErrorCode::socket_closed);
+            EXPECT_EQ(buf.read_size(), data.length());
+            EXPECT_EQ(strncmp(buf.read_head(), data.c_str(), buf.read_size()), 0);
         }, cond);
     service.run();
     EXPECT_EQ(run , true);
     pthread_join(thread, NULL);
 }
 
-TEST_F(SocketTest, recv_until_1000_bytes) {
+TEST_F(SocketTest, recv_until_10000_bytes) {
     pthread_t thread;
     pthread_create(&thread, NULL, &socket_write_alot_thread, NULL);
 
@@ -245,18 +247,54 @@ TEST_F(SocketTest, recv_until_1000_bytes) {
     while (rand() % 32 !=0);
     bool run = false;
     NonfreeSequenceBuffer<char> buf;
-    axon::util::AtLeast cond(1000);
+    axon::util::AtLeast cond(10000);
     sock.async_recv_until(buf, [&sock, &buf, &run](const ErrorCode &ec, size_t sz) {
             run = true;
             printf("recv %lu bytes ec %d\n", buf.read_size(), ec.code());
             // the socket should be closed
             EXPECT_EQ(ec, ErrorCode::success);
+            EXPECT_GE(buf.read_size(), 10000);
+            for (size_t i = 0; i < buf.read_size(); i++) {
+                EXPECT_EQ(*(buf.read_head() + i), (i /256 + 1) % 127);
+            }
             sock.shutdown();
         }, cond);
     service.run();
     EXPECT_EQ(run , true);
     pthread_join(thread, NULL);
 }
+
+TEST_F(SocketTest, recv_until_contains) {
+    pthread_t thread;
+    pthread_create(&thread, NULL, &socket_write_alot_thread, NULL);
+
+    IOService service;
+    Socket sock(&service);
+    Acceptor acceptor;
+    acceptor.bind("127.0.0.1", 10086);
+    acceptor.listen();
+    acceptor.accept(sock);
+
+    while (rand() % 32 !=0);
+    bool run = false;
+    NonfreeSequenceBuffer<char> buf;
+    axon::util::Contains cond("\14\15");
+    sock.async_recv_until(buf, [&sock, &buf, &run](const ErrorCode &ec, size_t sz) {
+            run = true;
+            printf("recv %lu bytes ec %d\n", buf.read_size(), ec.code());
+            // the socket should be closed
+            EXPECT_EQ(ec, ErrorCode::success);
+            EXPECT_GE(buf.read_size(), 014 * 256);
+            for (size_t i = 0; i < buf.read_size(); i++) {
+                EXPECT_EQ(*(buf.read_head() + i), (i /256 + 1) % 127);
+            }
+            sock.shutdown();
+        }, cond);
+    service.run();
+    EXPECT_EQ(run , true);
+    pthread_join(thread, NULL);
+}
+
 
 TEST_F(SocketTest, recv_remote_close) {
     pthread_t thread;
@@ -397,3 +435,4 @@ TEST_F(SocketTest, send) {
 
 
 }
+

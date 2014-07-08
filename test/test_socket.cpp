@@ -20,6 +20,8 @@ const int max_write_cnt = 5087;
 const int socket_cnt = 110;
 int read_fds[socket_cnt];
 int write_fds[socket_cnt];
+
+bool read_success;
 }
 using namespace axon::ip::tcp;
 using namespace axon::service;
@@ -39,6 +41,7 @@ protected:
         }
     }
 public:
+    char tmp_buf[255];
 };
 
 
@@ -155,6 +158,8 @@ void* socket_read_thread(void*) {
     addr.sin_family = AF_INET;
     addr.sin_port =  htons(10086);
     inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
+
+    sleep(2);
     while (true) {
         if (connect(read_fd, (sockaddr*)&addr, sizeof(addr))==0) {
             break;
@@ -164,6 +169,10 @@ void* socket_read_thread(void*) {
     for (int cnt = 0; cnt < 1; cnt++) {
         char buf[255];
         int sz = recv(read_fd, buf, 100, ::MSG_NOSIGNAL);
+        assert(sz == data.size());
+        buf[sz] = 0;
+        assert(data == buf);
+        read_success = true;
         if (sz <= 0) {
             printf("recv error: %d en:%d\n", sz, errno);
             return NULL;
@@ -188,7 +197,7 @@ TEST_F(SocketTest, recv) {
 
     IOService service;
     Socket sock(&service);
-    Acceptor acceptor;
+    Acceptor acceptor(&service);
     acceptor.bind("127.0.0.1", 10086);
     acceptor.listen();
     acceptor.accept(sock);
@@ -211,7 +220,7 @@ TEST_F(SocketTest, recv_until) {
 
     IOService service;
     Socket sock(&service);
-    Acceptor acceptor;
+    Acceptor acceptor(&service);
     acceptor.bind("127.0.0.1", 10086);
     acceptor.listen();
     acceptor.accept(sock);
@@ -239,7 +248,7 @@ TEST_F(SocketTest, recv_until_10000_bytes) {
 
     IOService service;
     Socket sock(&service);
-    Acceptor acceptor;
+    Acceptor acceptor(&service);
     acceptor.bind("127.0.0.1", 10086);
     acceptor.listen();
     acceptor.accept(sock);
@@ -270,7 +279,7 @@ TEST_F(SocketTest, recv_until_contains) {
 
     IOService service;
     Socket sock(&service);
-    Acceptor acceptor;
+    Acceptor acceptor(&service);
     acceptor.bind("127.0.0.1", 10086);
     acceptor.listen();
     acceptor.accept(sock);
@@ -302,7 +311,7 @@ TEST_F(SocketTest, recv_remote_close) {
 
     IOService service;
     Socket sock(&service);
-    Acceptor acceptor;
+    Acceptor acceptor(&service);
     acceptor.bind("127.0.0.1", 10086);
     acceptor.listen();
     acceptor.accept(sock);
@@ -328,7 +337,7 @@ TEST_F(SocketTest, recv_cancel) {
 
     IOService service;
     Socket sock(&service);
-    Acceptor acceptor;
+    Acceptor acceptor(&service);
     acceptor.bind("127.0.0.1", 10086);
     acceptor.listen();
     acceptor.accept(sock);
@@ -367,20 +376,21 @@ void* run_thread(void * args) {
 
 TEST_F(SocketTest, multiple_socket_recv) {
     IOService service;
-    Acceptor acceptor;
+    Acceptor acceptor(&service);
     acceptor.bind("127.0.0.1", 10086);
     acceptor.listen();
 
     pthread_t threads[socket_cnt], run_threads[socket_cnt];
     NonfreeSequenceBuffer<char> buffers[socket_cnt];
-    std::vector<Socket> sockets(socket_cnt, &service);
+    std::vector<std::shared_ptr<Socket> > sockets(socket_cnt);
     for (int i = 0; i < socket_cnt; i++) {
+        sockets[i].reset(new Socket(&service));
         pthread_create(&threads[i], NULL, &socket_multiple_write_thread, (void*)(size_t)(i));
-        acceptor.accept(sockets[i]);
+        acceptor.accept(*sockets[i]);
     }
 
     for (int i = 0; i < socket_cnt; i++) {
-        start_recv(sockets[i], buffers[i], ErrorCode::success, 0);
+        start_recv(*sockets[i], buffers[i], ErrorCode::success, 0);
     }
     for (int i = 0; i < socket_cnt; i++) {
         pthread_create(&run_threads[i], NULL, &run_thread, (void*)(&service));
@@ -413,7 +423,7 @@ TEST_F(SocketTest, send) {
 
     IOService service;
     Socket sock(&service);
-    Acceptor acceptor;
+    Acceptor acceptor(&service);
     acceptor.bind("127.0.0.1", 10086);
     acceptor.listen();
     acceptor.accept(sock);
@@ -428,6 +438,7 @@ TEST_F(SocketTest, send) {
     sock.async_send(buf, [&buf, &run](const ErrorCode &ec, size_t sz) {
             run = true;
             printf("send ec: %d\n", ec.code());
+            EXPECT_EQ(ec.code(), ErrorCode::success);
         });
     service.run();
     EXPECT_EQ(run , true);
@@ -436,3 +447,34 @@ TEST_F(SocketTest, send) {
 
 }
 
+
+TEST_F(SocketTest, async_accept) {
+    pthread_t thread;
+    pthread_create(&thread, NULL, &socket_read_thread, NULL);
+
+    IOService service;
+    Socket sock(&service);
+    Acceptor acceptor(&service);
+
+    acceptor.bind("127.0.0.1", 10086);
+    acceptor.listen();
+
+    bool run = false;
+    read_success = false;
+    acceptor.async_accept(sock, [&sock, &run](const ErrorCode& ec) {
+        printf("Accepted!\n");
+        NonfreeSequenceBuffer<char> buf;
+        buf.prepare(100);
+        strcpy(buf.write_head(), data.c_str());  
+        buf.accept(data.size()); 
+        run = true;
+        sock.async_send(buf, [](const ErrorCode& ec, size_t sz){
+            printf("send ec: %d\n", ec.code());
+            EXPECT_EQ(ec.code(), ErrorCode::success);
+        });
+    });
+    service.run();
+    EXPECT_EQ(run, true);
+    pthread_join(thread, NULL);
+    EXPECT_EQ(read_success, true);
+}

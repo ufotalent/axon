@@ -6,11 +6,12 @@
 #include "event/recv_event.hpp"
 #include "event/recv_until_event.hpp"
 #include "event/send_event.hpp"
+#include "util/noncopyable.hpp"
 
 namespace axon {
 namespace ip {
 namespace tcp {
-class Socket {
+class Socket: public axon::util::Noncopyable {
 public:
     typedef std::function<void(const axon::util::ErrorCode&, size_t)> CallBack;
     Socket(axon::service::IOService* io_service);

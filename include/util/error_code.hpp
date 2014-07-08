@@ -11,6 +11,9 @@ public:
         timed_out = 1,
         socket_closed = 2,
         operation_canceled = 3,
+        connection_aborted = 4,
+        file_limit_reached = 5,
+        permission_error = 6,
         unknown = 100
 
     };

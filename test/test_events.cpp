@@ -432,8 +432,10 @@ TEST_F(EventTest, multiple_socket_sequential_recv_with_service_unregister_halfwa
 bexit:
         continue;
     }
-    for (int i = 0; i < socket_cnt; i++)
+    for (int i = 0; i < socket_cnt; i++) {
+        close(read_fds[i]);
         pthread_join(thread[i], NULL);
+    }
     delete io_service;
 }
 

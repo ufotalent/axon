@@ -18,7 +18,7 @@ public:
 
     bool perform() {
         ssize_t br = ::send(fd_, buffer_.read_head(), buffer_.read_size(), ::MSG_DONTWAIT | ::MSG_NOSIGNAL);
-        if (br > 0 || buffer_.read_head() == 0) {
+        if (br > 0 || (br == 0 && buffer_.read_size() == 0)) {
             buffer_.consume(br);
             ec_ = axon::util::ErrorCode::success;
             bytes_transfered_ += br;

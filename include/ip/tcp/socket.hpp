@@ -51,8 +51,12 @@ public:
         ev_service_->start_event(ev, fd_ev_);
     }
 
+    void connect(std::string remote_addr, uint32_t port);
     void assign(int fd);
     void shutdown();
+
+    // For debugging purpose
+    int get_fd() const; 
 
 private:
     int fd_;

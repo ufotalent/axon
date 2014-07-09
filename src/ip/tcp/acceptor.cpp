@@ -28,7 +28,7 @@ void Acceptor::bind(std::string addr, uint32_t port) {
     memset(&addr_, 0, sizeof(addr_));
     addr_.sin_family = AF_INET;
     addr_.sin_port = htons(port);
-    inet_pton(AF_INET, "127.0.0.1", &addr_.sin_addr);
+    inet_pton(AF_INET, addr.c_str(), &addr_.sin_addr);
 
     int ret = ::bind(fd_, (sockaddr*)&addr_, sizeof(addr_));
     if (ret < 0) {

@@ -52,6 +52,7 @@ public:
     }
 
     void connect(std::string remote_addr, uint32_t port);
+    void async_connect(std::string remote_addr, uint32_t port, CallBack callback);
     void assign(int fd);
     void shutdown();
 
@@ -63,6 +64,8 @@ private:
     axon::service::IOService* io_service_;
     axon::event::EventService* ev_service_;
     axon::event::EventService::fd_event::Ptr fd_ev_;
+
+    int do_connect(const std::string& remote_addr, uint32_t port);
 };
 
 }

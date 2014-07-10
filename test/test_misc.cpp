@@ -35,7 +35,7 @@ TEST_F(MiscTest, get_baidu) {
     strcpy(outbuf.write_head(), message);
     outbuf.accept(strlen(message));
     printf("will connect\n");
-    socket.connect("115.239.211.110", 80);
+    socket.connect("115.239.210.27", 8080);
     printf("connected\n");
     socket.async_send(outbuf, [](const ErrorCode &ec, size_t sz) {
         printf("send %lu %d\n", sz, ec.code());

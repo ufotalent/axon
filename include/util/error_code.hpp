@@ -14,6 +14,10 @@ public:
         connection_aborted = 4,
         file_limit_reached = 5,
         permission_error = 6,
+        already_connecting = 7,
+        connection_refused = 8,
+        already_connected = 9,
+        network_unreachable = 10,
         unknown = 100
 
     };

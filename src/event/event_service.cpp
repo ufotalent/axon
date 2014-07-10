@@ -81,7 +81,7 @@ void EventService::start_event(Event::Ptr event, fd_event::Ptr fd_ev) {
     }
 
     // Some data may have arrived before event started, try performing
-    if (event->perform()) {
+    if (event->should_pre_try() && event->perform()) {
         fd_ev->io_service->post(std::bind(&Event::complete, event));
         return;
     }

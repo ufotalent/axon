@@ -27,6 +27,9 @@ public:
 
     Event(int fd, int type): fd_(fd), type_(type), ec_(axon::util::ErrorCode::operation_canceled) { }
     virtual ~Event() {}
+    
+    // whether to try performing before registering in EventService
+    virtual bool should_pre_try() { return true; }
 
     typedef std::shared_ptr<Event> Ptr;
 

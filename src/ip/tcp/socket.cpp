@@ -41,7 +41,7 @@ void Socket::connect(std::string remote_addr, uint32_t port) {
 
     int ret = do_connect(remote_addr, port);
     // do connect
-    if (ret < 0) {
+    if (ret > 0) {
         perror("connect failed");
         throw std::runtime_error("socket connect failed");
     }

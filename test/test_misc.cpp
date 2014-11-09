@@ -43,6 +43,7 @@ TEST_F(MiscTest, get_baidu) {
         printf("send %lu %d\n", sz, ec.code());
     });
 
+    inbuf.prepare(100000);
     socket.async_recv(inbuf, [&inbuf](const ErrorCode &erc, size_t sz) {
         char expected_response[] = "HTTP/1.1 200 OK";
         std::string response(inbuf.read_head(), inbuf.read_head() + inbuf.read_size());

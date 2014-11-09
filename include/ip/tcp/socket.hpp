@@ -19,7 +19,6 @@ public:
 
     template <class Buffer>
     void async_recv(Buffer& buf, CallBack callback) {
-        buf.prepare(512);
         typename axon::event::RecvEvent<Buffer>::Ptr ev(new axon::event::RecvEvent<Buffer>(
                 fd_, 
                 axon::event::Event::EVENT_TYPE_READ,
@@ -30,7 +29,6 @@ public:
 
     template <class Buffer, class CompletionCondition>
     void async_recv_until(Buffer& buf, CallBack callback, CompletionCondition& condition) {
-        buf.prepare(512);
         typename axon::event::RecvUntilEvent<Buffer, CompletionCondition>::Ptr ev(new axon::event::RecvUntilEvent<Buffer, CompletionCondition>(
                 fd_, 
                 axon::event::Event::EVENT_TYPE_READ,
@@ -42,7 +40,6 @@ public:
 
     template <class Buffer>
     void async_send(Buffer& buf, CallBack callback) {
-        buf.prepare(512);
         typename axon::event::SendEvent<Buffer>::Ptr ev(new axon::event::SendEvent<Buffer>(
                 fd_, 
                 axon::event::Event::EVENT_TYPE_WRITE,

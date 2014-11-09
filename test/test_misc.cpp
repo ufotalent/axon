@@ -10,6 +10,7 @@
 #include "ip/tcp/socket.hpp"
 #include "service/io_service.hpp"
 #include "buffer/nonfree_sequence_buffer.hpp"
+#include "util/coroutine.hpp"
 
 using namespace axon::service;
 using namespace axon::ip::tcp;
@@ -53,4 +54,47 @@ TEST_F(MiscTest, get_baidu) {
     service.run();
     
 
+}
+
+TEST_F(MiscTest, corotine) {
+    int val = 0;
+    Coroutine coro;
+    std::function<void()> func = [&val, &coro] {
+        val++;
+        coro.yield();
+        val++;
+        coro.yield();
+        val++;
+        coro.yield();
+        val++;
+    };
+    coro.set_function(func);
+
+    for (int i = 0; i < 4; i++) {
+        coro();
+        EXPECT_EQ(val, i+1);
+    }
+    coro();
+    coro();
+    EXPECT_EQ(val, 4);
+}
+
+TEST_F(MiscTest, corotine_exception) {
+    int val = 0;
+    Coroutine coro;
+    std::function<void()> func = [&val, &coro] {
+        val++;
+        coro.yield();
+        throw std::runtime_error("exception");
+        coro.yield();
+    };
+    coro.set_function(func);
+
+    coro();
+    EXPECT_EQ(val, 1);
+    EXPECT_THROW(coro(), std::runtime_error);
+    EXPECT_EQ(val, 1);
+    coro();
+    coro();
+    EXPECT_EQ(val, 1);
 }

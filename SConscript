@@ -4,6 +4,11 @@ base_env = Environment(
     LIBS = ['pthread'],
     CPPPATH = ['.', 'include']
     )
+conf = Configure(base_env)
+# ==== check boost context
+if not conf.CheckLibWithHeader('boost_context', 'boost/context/all.hpp', 'cpp'):
+    print 'missing boost_context, exit'
+    Exit(1)
 
 # ==== build libaxon
 libaxon_env = base_env.Clone()

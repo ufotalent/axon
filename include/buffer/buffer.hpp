@@ -6,7 +6,7 @@
 
 
 namespace axon {
-namespace util {
+namespace buffer {
 
 template <typename T>
 class SequenceBuffer {

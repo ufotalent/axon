@@ -6,7 +6,7 @@
 #include <arpa/inet.h>
 #include "service/io_service.hpp"
 #include "event/recv_event.hpp"
-#include "util/nonfree_sequence_buffer.hpp"
+#include "buffer/nonfree_sequence_buffer.hpp"
 #include "event/event_service.hpp"
 
 namespace {
@@ -23,6 +23,7 @@ int write_fds[socket_cnt];
 using namespace axon::util;
 using namespace axon::event;
 using namespace axon::service;
+using namespace axon::buffer;
 class EventTest: public ::testing::Test {
 protected:
     virtual void SetUp() {

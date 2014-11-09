@@ -6,7 +6,7 @@
 #include <arpa/inet.h>
 #include "ip/tcp/socket.hpp"
 #include "ip/tcp/acceptor.hpp"
-#include "util/nonfree_sequence_buffer.hpp"
+#include "buffer/nonfree_sequence_buffer.hpp"
 #include "util/completion_condition.hpp"
 
 
@@ -26,6 +26,7 @@ bool read_success;
 using namespace axon::ip::tcp;
 using namespace axon::service;
 using namespace axon::util;
+using namespace axon::buffer;
 class SocketTest: public ::testing::Test {
 protected:
     virtual void SetUp() {

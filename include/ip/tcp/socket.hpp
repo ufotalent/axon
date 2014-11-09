@@ -2,7 +2,7 @@
 
 #include "service/io_service.hpp"
 #include "event/event_service.hpp"
-#include "util/buffer.hpp"
+#include "buffer/buffer.hpp"
 #include "event/recv_event.hpp"
 #include "event/recv_until_event.hpp"
 #include "event/send_event.hpp"

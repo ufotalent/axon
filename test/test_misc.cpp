@@ -9,11 +9,12 @@
 #include "util/blocking_queue.hpp"
 #include "ip/tcp/socket.hpp"
 #include "service/io_service.hpp"
-#include "util/nonfree_sequence_buffer.hpp"
+#include "buffer/nonfree_sequence_buffer.hpp"
 
 using namespace axon::service;
 using namespace axon::ip::tcp;
 using namespace axon::util;
+using namespace axon::buffer;
 class MiscTest: public ::testing::Test {
 protected:
     virtual void SetUp() {
@@ -30,12 +31,12 @@ TEST_F(MiscTest, get_baidu) {
     Socket socket(&service);
 
     char message[] = "GET /index.html HTTP/1.1\r\nHost: www.baidu.com\r\n\r\n";
-    axon::util::NonfreeSequenceBuffer<char> outbuf, inbuf;
+    axon::buffer::NonfreeSequenceBuffer<char> outbuf, inbuf;
     outbuf.prepare(strlen(message) + 1);
     strcpy(outbuf.write_head(), message);
     outbuf.accept(strlen(message));
     printf("will connect\n");
-    socket.connect("115.239.210.27", 8080);
+    socket.connect("115.239.210.27", 80);
     printf("connected\n");
     socket.async_send(outbuf, [](const ErrorCode &ec, size_t sz) {
         printf("send %lu %d\n", sz, ec.code());

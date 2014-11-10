@@ -20,6 +20,7 @@ const int max_write_cnt = 5087;
 const int socket_cnt = 110;
 int read_fds[socket_cnt];
 int write_fds[socket_cnt];
+int bigger_then_buffer = 4 * 1000 * 1000;
 
 bool read_success;
 }
@@ -184,6 +185,47 @@ void* socket_read_thread(void*) {
     return NULL;
 }
 
+void* socket_keep_read_thread(void*) {
+    read_fd = socket(AF_INET, SOCK_STREAM, 0);
+    sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port =  htons(10086);
+    inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
+
+    sleep(2);
+    while (true) {
+        if (connect(read_fd, (sockaddr*)&addr, sizeof(addr))==0) {
+            break;
+        }
+    };
+    while (rand() % 32!=0);
+    int tot = 0;
+    std::vector<char> buf(bigger_then_buffer * 4, 0);
+    char *p = &buf[0];
+    while (true) {
+        int sz = recv(read_fd, p, bigger_then_buffer, ::MSG_NOSIGNAL);
+        if (sz > 0) {
+            tot += sz;
+            p += sz;
+        } else {
+            printf("recv error: %d en:%d\n", sz, errno);
+            break;
+        }
+        read_success = true;
+        printf("read %d bytes\n", sz);
+        if (tot >= bigger_then_buffer * 4)
+            break;
+        sleep(1);
+    }
+    assert(tot == bigger_then_buffer * 4);
+    for (int i = 0; i < tot; i++)
+        assert(buf[i] == i % 128);
+    close(read_fd);
+    return NULL;
+}
+
+
 void* socket_shutdown_thread(void* args) {
     Socket *sock = (Socket*)args;
     usleep(5000);
@@ -341,6 +383,7 @@ TEST_F(SocketTest, recv_until) {
     while (rand() % 32 !=0);
     bool run = false;
     NonfreeSequenceBuffer<char> buf;
+    buf.prepare(10000);
     axon::util::AtLeast cond(1000);
     sock.async_recv_until(buf, [&buf, &run](const ErrorCode &ec, size_t sz) {
         run = true;
@@ -596,6 +639,37 @@ TEST_F(SocketTest, send) {
 
 }
 
+TEST_F(SocketTest, send_exact) {
+
+    pthread_t thread;
+    pthread_create(&thread, NULL, &socket_keep_read_thread, NULL);
+
+    IOService service;
+    Socket sock(&service);
+    Acceptor acceptor(&service);
+    acceptor.bind("127.0.0.1", 10086);
+    acceptor.listen();
+    acceptor.accept(sock);
+
+    while (rand() % 32 !=0);
+    bool run = false;
+    NonfreeSequenceBuffer<char> buf;
+    buf.prepare(bigger_then_buffer * 4);
+    for (int i = 0; i < bigger_then_buffer * 4;i ++)
+        *(buf.write_head() + i) = i % 128;
+    buf.accept(bigger_then_buffer * 4);
+    printf("will send %lu bytes\n", buf.read_size());
+    sock.async_send_until(buf, [&buf, &run, &sock](const ErrorCode &ec, size_t sz) {
+        run = true;
+        printf("send ec: %d\n", ec.code());
+        EXPECT_EQ(ec.code(), ErrorCode::success);
+        }, AtLeast(bigger_then_buffer * 4));
+    service.run();
+    EXPECT_EQ(run , true);
+    pthread_join(thread, NULL);
+
+
+}
 
 TEST_F(SocketTest, async_accept) {
     pthread_t thread;

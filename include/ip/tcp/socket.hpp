@@ -6,6 +6,7 @@
 #include "event/recv_event.hpp"
 #include "event/recv_until_event.hpp"
 #include "event/send_event.hpp"
+#include "event/send_until_event.hpp"
 #include "util/noncopyable.hpp"
 
 namespace axon {
@@ -28,7 +29,7 @@ public:
     }
 
     template <class Buffer, class CompletionCondition>
-    void async_recv_until(Buffer& buf, CallBack callback, CompletionCondition& condition) {
+    void async_recv_until(Buffer& buf, CallBack callback, CompletionCondition condition) {
         typename axon::event::RecvUntilEvent<Buffer, CompletionCondition>::Ptr ev(new axon::event::RecvUntilEvent<Buffer, CompletionCondition>(
                 fd_, 
                 axon::event::Event::EVENT_TYPE_READ,
@@ -45,6 +46,17 @@ public:
                 axon::event::Event::EVENT_TYPE_WRITE,
                 buf,
                 callback));
+        ev_service_->start_event(ev, fd_ev_);
+    }
+
+    template <class Buffer, class CompletionCondition>
+    void async_send_until(Buffer& buf, CallBack callback, CompletionCondition condition) {
+        typename axon::event::SendUntilEvent<Buffer, CompletionCondition>::Ptr ev(new axon::event::SendUntilEvent<Buffer, CompletionCondition>(
+                fd_, 
+                axon::event::Event::EVENT_TYPE_WRITE,
+                buf,
+                callback,
+                condition));
         ev_service_->start_event(ev, fd_ev_);
     }
 

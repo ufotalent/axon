@@ -10,13 +10,13 @@ namespace service {
 void* notify(void* arg) {
     IOService* service = static_cast<IOService*>(arg);
     while (true) {
-        if (service->stoped_) {
-            break;
-        }
         if (service->handler_queue_.empty()) {
             service->handler_queue_.notify_all();
         }
-        sleep(1);
+        if (service->stoped_) {
+            break;
+        }
+        usleep(1000);
     }
     return NULL;
 }

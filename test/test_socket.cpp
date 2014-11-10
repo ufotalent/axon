@@ -287,7 +287,7 @@ TEST_F(SocketTest, test_async_connect_refused) {
 
     sock.shutdown();
 }
-
+/*
 TEST_F(SocketTest, test_async_connect_timeout) {
     sleep(1);
     IOService service;
@@ -302,6 +302,7 @@ TEST_F(SocketTest, test_async_connect_timeout) {
 
     sock.shutdown();
 }
+*/
 TEST_F(SocketTest, recv) {
     pthread_t thread;
     pthread_create(&thread, NULL, &socket_write_thread, NULL);

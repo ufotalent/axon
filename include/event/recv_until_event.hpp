@@ -20,10 +20,13 @@ public:
     }
 
     bool perform() {
+        if (condition_(this->ec_, this->bytes_transfered_, this->buffer_.read_head() + data_head_, last_check_)) {
+            return true;
+        }
+        if (this->buffer_.write_size() == 0) {
+            return false;
+        }
         while (true) {
-            if (this->buffer_.write_size() == 0)  {
-                this->buffer_.prepare(512);
-            }
             if (!BaseType::perform()) 
                 break;
             printf("true until: ec %d bt %lu\n", this->ec_, this->bytes_transfered_);

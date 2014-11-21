@@ -27,6 +27,8 @@ public:
 
     virtual size_t write_size() = 0;
 
+    virtual void reset() = 0;
+
 };
 
 }

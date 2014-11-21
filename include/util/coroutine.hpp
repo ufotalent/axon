@@ -12,7 +12,7 @@ public:
     Coroutine();
     void yield(); // this must be called inside the coroutine
     void operator() ();
-    void set_function(std::function<void()>& f);
+    void set_function(std::function<void()>&& f);
 
 
 private:

@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <functional>
+#include <algorithm>
 #include <gtest/gtest.h>
 #include <pthread.h>
 #include <unistd.h>
@@ -204,7 +205,7 @@ void* socket_keep_read_thread(void*) {
     std::vector<char> buf(bigger_then_buffer * 4, 0);
     char *p = &buf[0];
     while (true) {
-        int sz = recv(read_fd, p, bigger_then_buffer, ::MSG_NOSIGNAL);
+        int sz = recv(read_fd, p, std::min(bigger_then_buffer, int(buf.size() - tot)), ::MSG_NOSIGNAL);
         if (sz > 0) {
             tot += sz;
             p += sz;
@@ -445,8 +446,7 @@ TEST_F(SocketTest, recv_until_exactly_10000_bytes) {
     bool run = false;
     NonfreeSequenceBuffer<char> buf;
     buf.prepare(10000);
-    axon::util::AtLeast cond(10000);
-    sock.async_recv_until(buf, [&sock, &buf, &run](const ErrorCode &ec, size_t sz) {
+    sock.async_recv_all(buf, [&sock, &buf, &run](const ErrorCode &ec, size_t sz) {
         run = true;
         printf("recv %lu bytes ec %d\n", buf.read_size(), ec.code());
         // the socket should be closed
@@ -456,7 +456,7 @@ TEST_F(SocketTest, recv_until_exactly_10000_bytes) {
         EXPECT_EQ(*(buf.read_head() + i), (i /256 + 1) % 127);
         }
         sock.shutdown();
-        }, cond);
+        });
     service.run();
     EXPECT_EQ(run , true);
     pthread_join(thread, NULL);
@@ -659,11 +659,11 @@ TEST_F(SocketTest, send_exact) {
         *(buf.write_head() + i) = i % 128;
     buf.accept(bigger_then_buffer * 4);
     printf("will send %lu bytes\n", buf.read_size());
-    sock.async_send_until(buf, [&buf, &run, &sock](const ErrorCode &ec, size_t sz) {
+    sock.async_send_all(buf, [&buf, &run, &sock](const ErrorCode &ec, size_t sz) {
         run = true;
         printf("send ec: %d\n", ec.code());
         EXPECT_EQ(ec.code(), ErrorCode::success);
-        }, AtLeast(bigger_then_buffer * 4));
+        });
     service.run();
     EXPECT_EQ(run , true);
     pthread_join(thread, NULL);

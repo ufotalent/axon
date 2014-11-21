@@ -69,7 +69,7 @@ TEST_F(MiscTest, corotine) {
         coro.yield();
         val++;
     };
-    coro.set_function(func);
+    coro.set_function(std::move(func));
 
     for (int i = 0; i < 4; i++) {
         coro();
@@ -89,7 +89,7 @@ TEST_F(MiscTest, corotine_exception) {
         throw std::runtime_error("exception");
         coro.yield();
     };
-    coro.set_function(func);
+    coro.set_function(std::move(func));
 
     coro();
     EXPECT_EQ(val, 1);

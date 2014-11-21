@@ -10,8 +10,8 @@ Coroutine::Coroutine():
     pthread_mutex_init(&mutex_, NULL);
 }
 
-void Coroutine::set_function(std::function<void()>& f) {
-    call_ = f;
+void Coroutine::set_function(std::function<void()>&& f) {
+    call_ = std::move(f);
     context_callee_ = boost::context::make_fcontext(&stack_[0] + stack_.size(), stack_.size(), dispatch);
 }
 

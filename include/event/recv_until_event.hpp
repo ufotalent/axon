@@ -29,7 +29,6 @@ public:
         while (true) {
             if (!BaseType::perform()) 
                 break;
-            printf("true until: ec %d bt %lu\n", this->ec_, this->bytes_transfered_);
             if (this->ec_ || condition_(this->ec_, this->bytes_transfered_, this->buffer_.read_head() + data_head_, last_check_)) {
                 return true;
             }

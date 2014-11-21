@@ -13,11 +13,7 @@ template <typename T>
 class NonfreeSequenceBuffer : public SequenceBuffer<T>, public axon::util::Noncopyable {
 public:
     NonfreeSequenceBuffer() {
-        data_.resize(1);
-        head_ = &data_[0];
-        read_head_ = 0;
-        write_head_ = 0;
-        tail_ = 0;
+        reset();
     }
 
     T* read_head() {
@@ -42,6 +38,14 @@ public:
 
         // head may be moved as vector will duplicate
         head_ = &data_[0];
+    }
+
+    void reset() {
+        data_.resize(1);
+        head_ = &data_[0];
+        read_head_ = 0;
+        write_head_ = 0;
+        tail_ = 0;
     }
         
     size_t read_size() {

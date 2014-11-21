@@ -8,6 +8,7 @@
 #include "event/send_event.hpp"
 #include "event/send_until_event.hpp"
 #include "util/noncopyable.hpp"
+#include "util/completion_condition.hpp"
 
 namespace axon {
 namespace ip {
@@ -40,6 +41,11 @@ public:
     }
 
     template <class Buffer>
+    void async_recv_all(Buffer& buf, CallBack callback) {
+        async_recv_until(buf, callback, axon::util::AtLeast(buf.write_size()));
+    }
+
+    template <class Buffer>
     void async_send(Buffer& buf, CallBack callback) {
         typename axon::event::SendEvent<Buffer>::Ptr ev(new axon::event::SendEvent<Buffer>(
                 fd_, 
@@ -60,6 +66,11 @@ public:
         ev_service_->start_event(ev, fd_ev_);
     }
 
+    template <class Buffer>
+    void async_send_all(Buffer& buf, CallBack callback) {
+        async_send_until(buf, callback, axon::util::AtLeast(buf.read_size()));
+    }
+
     void connect(std::string remote_addr, uint32_t port);
     void async_connect(std::string remote_addr, uint32_t port, CallBack callback);
     void assign(int fd);
@@ -68,7 +79,7 @@ public:
     // For debugging purpose
     int get_fd() const; 
 
-private:
+protected:
     int fd_;
     axon::service::IOService* io_service_;
     axon::event::EventService* ev_service_;

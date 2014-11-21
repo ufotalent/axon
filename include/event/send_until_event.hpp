@@ -21,6 +21,7 @@ public:
 
     bool perform() {
         if (condition_(this->ec_, this->bytes_transfered_, &stored_buffer_[0], last_check_)) {
+            this->ec_ = axon::util::ErrorCode::success;
             return true;
         }
         if (this->buffer_.read_size() == 0) {
@@ -29,7 +30,6 @@ public:
         while (true) {
             if (!BaseType::perform()) 
                 break;
-            printf("true until: ec %d bt %lu\n", this->ec_, this->bytes_transfered_);
             if (this->ec_ || condition_(this->ec_, this->bytes_transfered_, &stored_buffer_[0], last_check_)) {
                 return true;
             }

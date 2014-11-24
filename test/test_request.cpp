@@ -12,7 +12,7 @@
 #include "service/io_service.hpp"
 #include "buffer/nonfree_sequence_buffer.hpp"
 #include "util/coroutine.hpp"
-#include "socket/MessageSocket.hpp"
+#include "socket/message_socket.hpp"
 
 using namespace axon::service;
 using namespace axon::ip::tcp;
@@ -37,7 +37,7 @@ void* connect_and_write_thread(void *args) {
     sleep(1);
     axon::service::IOService* service = static_cast<IOService*>(args);
     axon::socket::MessageSocket socket(service);
-    MessageSocket::Message message(12);
+    Message message(12);
     strcpy(message.content_ptr(), "socket data");
 
     socket.async_connect("127.0.0.1", 10087, [&socket, &message](const ErrorCode &ec, size_t) {
@@ -73,7 +73,7 @@ void do_write_multiple(void *args) {
     for (int i = 0; i < 1000; i++) {
         char buf[20];
         int len = make_data(i, buf);
-        MessageSocket::Message message(len);
+        Message message(len);
         strcpy(message.content_ptr(), buf);
 
         socket.async_send(message, [](const MessageSocket::MessageResult mr) {
@@ -93,7 +93,7 @@ void do_write_multiple(void *args) {
 axon::util::Coroutine read_coro;
 void do_recv_multiple(IOService* service, MessageSocket* socket) {
     for (int i = 0; i < 1000; i++) {
-        MessageSocket::Message message;
+        Message message;
         socket->async_recv(message, [&i, &message](const MessageSocket::MessageResult mr) {
             if (mr == MessageSocket::MessageResult::SUCCESS) {
                 EXPECT_EQ((int)mr, MessageSocket::MessageResult::SUCCESS);
@@ -129,7 +129,7 @@ TEST_F(RequestTest, recv_one_msg) {
     acceptor.listen();
     acceptor.accept(socket);
 
-    MessageSocket::Message message;
+    Message message;
     socket.async_recv(message, [&message](const MessageSocket::MessageResult mr) {
         printf("message:%s\n", message.content_ptr());
         EXPECT_EQ((int)mr, MessageSocket::MessageResult::SUCCESS);

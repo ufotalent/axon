@@ -1,4 +1,4 @@
-#include "socket/MessageSocket.hpp"
+#include "socket/message_socket.hpp"
 #include <cstring>
 #include <cassert>
 #include "buffer/nonfree_sequence_buffer.hpp"
@@ -9,34 +9,6 @@ using namespace axon::service;
 using namespace axon::buffer;
 using namespace axon::util;
 
-const char MessageSocket::Message::AXON_MESSAGE_SIGNATURE[8] = {'A', 'X', 'O', 'N', 'M', 'S', 'G', 0};
-MessageSocket::Message::Message() :
-    Message(0) {
-}
-
-MessageSocket::Message::Message(uint32_t content_length):
-    holder_(content_length + sizeof(MessageHeader), 0) {
-
-    MessageHeader *header_ = header();
-    memcpy(header_->signature, AXON_MESSAGE_SIGNATURE, sizeof(AXON_MESSAGE_SIGNATURE));
-    header_->content_length = content_length;
-}
-
-MessageSocket::Message::Message(const char* data, uint32_t len):
-    holder_(data, data + len) {
-}
-
-void MessageSocket::Message::set_data(const char* data, uint32_t len) {
-    holder_ = std::vector<char>(data, data + len);
-}
-
-bool MessageSocket::Message::valid() const {
-    if (length() < sizeof(MessageHeader)) {
-        return false;
-    }
-    const MessageHeader *header_ = header();
-    return (header_->content_length == content_length()) && (memcmp(AXON_MESSAGE_SIGNATURE, header_->signature, sizeof(AXON_MESSAGE_SIGNATURE)) == 0);
-}
 
 
 MessageSocket::MessageSocket(IOService *service):Socket(service) {

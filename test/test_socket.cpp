@@ -68,7 +68,7 @@ void* socket_write_thread(void* args) {
         return NULL;
     }
 
-    usleep(10000);
+    usleep(100000);
     // write at 1s
     for (int cnt = 0; cnt < 1; cnt++) {
         char buf[255];
@@ -96,7 +96,7 @@ void* socket_write_alot_thread(void* args) {
         }
     };
 
-    usleep(10000);
+    usleep(100000);
     int cnt = 0;
     while (true) {
         cnt++;
@@ -131,7 +131,7 @@ void* socket_multiple_write_thread(void* args) {
             break;
         }
     };
-    usleep(100*100);
+    usleep(100*1000);
     for (int cnt = 0; cnt < max_write_cnt; cnt++) {
         char buf[write_size];
         for (int i = 0; i < write_size; i++) {
@@ -148,7 +148,7 @@ void* socket_multiple_write_thread(void* args) {
             sz += ret;
         }
     }
-    usleep(100*100);
+    usleep(100*1000);
     // close at 0.3s
     close(write_fds[offset]);
     return NULL;
@@ -229,7 +229,7 @@ void* socket_keep_read_thread(void*) {
 
 void* socket_shutdown_thread(void* args) {
     Socket *sock = (Socket*)args;
-    usleep(5000);
+    usleep(50000);
     sock->shutdown();
     return NULL;
 }

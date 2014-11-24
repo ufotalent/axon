@@ -109,15 +109,15 @@ TEST_F(MiscTest, timer) {
     Timer timer(&service);
     timeval begin;
     gettimeofday(&begin, NULL);
-    timer.expires_from_now(1); // 1ms
+    timer.expires_from_now(100); // 100ms
     timer.async_wait([&begin](const ErrorCode& ec) {
         timeval end;
         gettimeofday(&end, NULL);
         double elapsed = (end.tv_sec - begin.tv_sec) + (end.tv_usec - begin.tv_usec) / 1000000.0;
         printf("%lf\n", elapsed);
         EXPECT_EQ(ec.code(), ErrorCode::success);
-        EXPECT_LE(elapsed, 0.0011);
-        EXPECT_GE(elapsed, 0.0009);
+        EXPECT_LE(elapsed, 0.11);
+        EXPECT_GE(elapsed, 0.09);
     });
     service.run();
 }
@@ -143,8 +143,8 @@ TEST_F(MiscTest, multiple_timer) {
             gettimeofday(&end, NULL);
             double elapsed = (end.tv_sec - begin.tv_sec) + (end.tv_usec - begin.tv_usec) / 1000000.0;
             EXPECT_EQ(ec.code(), ErrorCode::success);
-            EXPECT_LE(elapsed, 0.0011 * i);
-            EXPECT_GE(elapsed, 0.0009 * i);
+            EXPECT_LE(elapsed, (0.0011 * i + 0.01));
+            EXPECT_GE(elapsed, (0.0009 * i - 0.01));
         });
     }
     timeval after;

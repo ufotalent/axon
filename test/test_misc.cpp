@@ -6,11 +6,14 @@
 #include <functional>
 #include <algorithm>
 #include <gtest/gtest.h>
+#include <sys/time.h>
 #include "util/blocking_queue.hpp"
 #include "ip/tcp/socket.hpp"
 #include "service/io_service.hpp"
 #include "buffer/nonfree_sequence_buffer.hpp"
 #include "util/coroutine.hpp"
+#include "util/timer.hpp"
+#include "util/thread.hpp"
 
 using namespace axon::service;
 using namespace axon::ip::tcp;
@@ -98,4 +101,59 @@ TEST_F(MiscTest, corotine_exception) {
     coro();
     coro();
     EXPECT_EQ(val, 1);
+}
+
+
+TEST_F(MiscTest, timer) {
+    IOService service;
+    Timer timer(&service);
+    timeval begin;
+    gettimeofday(&begin, NULL);
+    timer.expires_from_now(1); // 1ms
+    timer.async_wait([&begin](const ErrorCode& ec) {
+        timeval end;
+        gettimeofday(&end, NULL);
+        double elapsed = (end.tv_sec - begin.tv_sec) + (end.tv_usec - begin.tv_usec) / 1000000.0;
+        printf("%lf\n", elapsed);
+        EXPECT_EQ(ec.code(), ErrorCode::success);
+        EXPECT_LE(elapsed, 0.0011);
+        EXPECT_GE(elapsed, 0.0009);
+    });
+    service.run();
+}
+
+const int timer_count = 1000;
+TEST_F(MiscTest, multiple_timer) {
+    IOService service;
+    std::vector<Timer*> timers(timer_count);
+    for (int i = 0; i < timer_count; i++) {
+        timers[i] = new Timer(&service);
+    }
+
+    timeval before;
+    gettimeofday(&before, NULL);
+    service.add_work();
+    axon::util::Thread thread([&service]() {service.run();});
+    for (int i = 1; i < timer_count; i++) {
+        timeval begin;
+        gettimeofday(&begin, NULL);
+        timers[i]->expires_from_now(i); // 1ms
+        timers[i]->async_wait([begin, i](const ErrorCode& ec) {
+            timeval end;
+            gettimeofday(&end, NULL);
+            double elapsed = (end.tv_sec - begin.tv_sec) + (end.tv_usec - begin.tv_usec) / 1000000.0;
+            EXPECT_EQ(ec.code(), ErrorCode::success);
+            EXPECT_LE(elapsed, 0.0011 * i);
+            EXPECT_GE(elapsed, 0.0009 * i);
+        });
+    }
+    timeval after;
+    gettimeofday(&after, NULL);
+    printf("creating %d request cost %ld ms\n", timer_count, (after.tv_sec - before.tv_sec)*1000 + (after.tv_usec - before.tv_usec)/1000);
+    service.remove_work();
+    service.run();
+    thread.join();
+    for (int i = 0; i < timer_count; i++) {
+        delete timers[i];
+    }
 }

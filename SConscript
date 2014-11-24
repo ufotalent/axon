@@ -1,6 +1,6 @@
 base_env = Environment(
     CCFLAGS = ['-ggdb', '-march=native', '-mtune=native', '-O2', '-std=c++0x'],
-    LINKFLAGS = ['-Wl,--as-needed', '-rdynamic'],
+    LINKFLAGS = ['-Wl,--as-needed', '-rdynamic', '-O2'],
     LIBS = ['pthread'],
     CPPPATH = ['.', 'include']
     )

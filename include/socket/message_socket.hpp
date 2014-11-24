@@ -18,6 +18,7 @@ public:
             INVALID_HEADER = 2
         };
         message_result_t result_;
+        MessageResult(): MessageResult(0) {}
         MessageResult(int result): result_(static_cast<message_result_t>(result)) {}
         operator int() const { return result_; }
     };

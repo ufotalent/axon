@@ -144,8 +144,11 @@ TEST_F(IOServiceTest, 100_producer_100_worker) {
         pthread_join(threads[i], NULL);
     }
 
-
+    service->poll();
     for (int i = 0; i < nn; i++) {
+        if (result[i] != true) {
+            printf("XXXXXXXX %d\n", i);
+        }
         EXPECT_EQ(result[i], true);
     }
 }

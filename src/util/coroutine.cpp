@@ -4,7 +4,7 @@
 
 using namespace axon::util;
 Coroutine::Coroutine(): 
-    stack_(1024 * 1024, 0), 
+    stack_(1024 * 1024 * 5, 0), 
     context_callee_(NULL), 
     call_(std::function<void()>()) {
     pthread_mutex_init(&mutex_, NULL);

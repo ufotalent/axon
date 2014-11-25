@@ -20,6 +20,7 @@ public:
     Acceptor(axon::service::IOService* io_service);
     virtual ~Acceptor();
 private:
+    bool block_;
     int fd_;
     sockaddr_in addr_;
 

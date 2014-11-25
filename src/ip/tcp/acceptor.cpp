@@ -4,6 +4,7 @@
 #include "ip/tcp/acceptor.hpp"
 #include "event/accept_event.hpp"
 #include "service/io_service.hpp"
+#include "util/util.hpp"
 
 using namespace axon::ip::tcp;
 using namespace axon::event;
@@ -13,6 +14,7 @@ Acceptor::Acceptor(axon::service::IOService* io_service): io_service_(io_service
     fd_ = socket(AF_INET, SOCK_STREAM, 0);
     fd_ev_.reset(new EventService::fd_event(fd_, io_service_));
     ev_service_->register_fd(fd_, fd_ev_);
+    block_ = true;
 }
 
 Acceptor::~Acceptor() {
@@ -45,6 +47,9 @@ void Acceptor::listen() {
 }
 
 void Acceptor::accept(Socket& sock) {
+    if (!block_) {
+        throw std::runtime_error("acceptor is marked non-blocking");
+    }
 
     sockaddr_in peer;
     socklen_t peer_len = sizeof(peer);
@@ -57,6 +62,11 @@ void Acceptor::accept(Socket& sock) {
 }
 
 void Acceptor::async_accept(Socket &sock, CallBack callback) {
+    block_ = false;
+    int flags = fcntl(fd_, F_GETFL);
+    if (flags < 0)
+        throw std::runtime_error("GETFL failed");
+    ENSURE_RETURN_ZERO(fcntl(fd_, F_SETFL, flags | O_NONBLOCK));
     typename axon::event::AcceptEvent<Socket>::Ptr ev(new axon::event::AcceptEvent<Socket>(
             fd_,
             sock,

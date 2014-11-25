@@ -20,7 +20,7 @@ public:
     bool perform() {
         sockaddr_in peer;
         socklen_t peer_len = sizeof(peer);
-        int rfd = ::accept(fd_, (sockaddr*)&peer, &peer_len);
+        int rfd = ::accept4(fd_, (sockaddr*)&peer, &peer_len, SOCK_NONBLOCK);
 
         if (rfd >= 0) {
             ec_ = axon::util::ErrorCode::success;

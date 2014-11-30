@@ -363,6 +363,8 @@ TEST_F(SocketTest, recv) {
     buf.prepare(512);
     sock.async_recv(buf, [&buf, &run](const ErrorCode &ec, size_t sz) {
         run = true;
+        EXPECT_EQ(buf.read_size(), data.length());
+        EXPECT_EQ(strncmp(buf.read_head(), data.c_str(), buf.read_size()), 0);
         printf("recv %lu bytes ec %d\n", buf.read_size(), ec.code());
         });
     service.run();
@@ -700,4 +702,43 @@ TEST_F(SocketTest, async_accept) {
     EXPECT_EQ(run, true);
     pthread_join(thread, NULL);
     EXPECT_EQ(read_success, true);
+}
+
+TEST_F(SocketTest, action_after_shutdown) {
+    pthread_t thread;
+    pthread_create(&thread, NULL, &socket_write_thread, NULL);
+
+    IOService service;
+    Socket sock(&service);
+    NonfreeSequenceBuffer<char> bufinvalid;
+    bufinvalid.prepare(512);
+    sock.async_recv(bufinvalid,[](const ErrorCode &ec, size_t sz) {
+        EXPECT_EQ(ec.code(), ErrorCode::invalid_socket);
+    });
+    Acceptor acceptor(&service);
+    acceptor.bind("127.0.0.1", 10086);
+    acceptor.listen();
+    acceptor.accept(sock);
+
+    while (rand() % 32 !=0);
+    bool run = false;
+    NonfreeSequenceBuffer<char> buf;
+    buf.prepare(512);
+    sock.async_recv(buf, [&buf, &run, &sock](const ErrorCode &ec, size_t sz) {
+        EXPECT_EQ(buf.read_size(), data.length());
+        EXPECT_EQ(strncmp(buf.read_head(), data.c_str(), buf.read_size()), 0);
+        printf("recv %lu bytes ec %d\n", buf.read_size(), ec.code());
+
+        sock.shutdown();
+        NonfreeSequenceBuffer<char> bufinvalid;
+        bufinvalid.prepare(512);
+        sock.async_recv(bufinvalid,[&run](const ErrorCode &ec, size_t sz) {
+            EXPECT_EQ(ec.code(), ErrorCode::invalid_socket);
+            run = true;
+        });
+    });
+    service.run();
+    EXPECT_EQ(run , true);
+    pthread_join(thread, NULL);
+
 }

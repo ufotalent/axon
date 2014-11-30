@@ -14,7 +14,7 @@ using namespace axon::ip::tcp;
 
 
 Socket::Socket(axon::service::IOService* io_service): fd_(-1), io_service_(io_service), ev_service_(&EventService::get_instance()), fd_ev_(NULL) {
-
+    is_down_.store(true);
 }
 
 int Socket::do_connect(const std::string& remote_addr, uint32_t port) {
@@ -38,6 +38,7 @@ void Socket::connect(std::string remote_addr, uint32_t port) {
     fd_ = socket(AF_INET, SOCK_STREAM, 0);
     fd_ev_.reset(new EventService::fd_event(fd_, io_service_));
     ev_service_->register_fd(fd_, fd_ev_);
+    is_down_.store(false);
 
     int ret = do_connect(remote_addr, port);
     // do connect
@@ -57,6 +58,7 @@ void Socket::async_connect(std::string remote_addr, uint32_t port, CallBack call
     ENSURE_RETURN_ZERO(fcntl(fd_, F_SETFL, flags | O_NONBLOCK));
     fd_ev_.reset(new EventService::fd_event(fd_, io_service_));
     ev_service_->register_fd(fd_, fd_ev_);
+    is_down_.store(false);
 
     int code = do_connect(remote_addr, port);
     if (code != EINPROGRESS) {
@@ -71,12 +73,15 @@ void Socket::assign(int fd) {
     fd_ = fd;
     fd_ev_.reset(new EventService::fd_event(fd_, io_service_));
     ev_service_->register_fd(fd_, fd_ev_);
+    is_down_.store(false);
 }
 
 void Socket::shutdown() {
-    if (!fd_ev_) {
+    bool expected = false;
+    if (!is_down_.compare_exchange_strong(expected, true)) {
         return;
     }
+    is_down_.store(true);
     EventService::get_instance().unregister_fd(fd_, fd_ev_);
     close(fd_);
     fd_ev_.reset();

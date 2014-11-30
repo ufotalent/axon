@@ -40,7 +40,6 @@ public:
             return true;
         }
 
-        printf("%s\n", strerror(opt));
         switch (opt) {
         case EALREADY:
             ec_ = axon::util::ErrorCode::already_connecting;

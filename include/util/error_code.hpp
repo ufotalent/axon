@@ -18,6 +18,7 @@ public:
         connection_refused = 8,
         already_connected = 9,
         network_unreachable = 10,
+        invalid_socket = 11,
         unknown = 100
 
     };

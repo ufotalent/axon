@@ -13,6 +13,9 @@
 #include "buffer/nonfree_sequence_buffer.hpp"
 #include "util/coroutine.hpp"
 #include "socket/message_socket.hpp"
+#include "socket/consistent_socket.hpp"
+#include "util/thread.hpp"
+#include <stdexcept>
 
 using namespace axon::service;
 using namespace axon::ip::tcp;
@@ -115,6 +118,8 @@ void* write_multiple_thread(void* args) {
 }
 
 }
+
+
 TEST_F(RequestTest, recv_one_msg) {
     connected = false;
     send_success = false;
@@ -125,9 +130,13 @@ TEST_F(RequestTest, recv_one_msg) {
 
     axon::socket::MessageSocket socket(&service);
     axon::ip::tcp::Acceptor acceptor(&service);
-    acceptor.bind("127.0.0.1", 10087);
-    acceptor.listen();
-    acceptor.accept(socket);
+    try {
+        acceptor.bind("127.0.0.1", 10087);
+        acceptor.listen();
+        acceptor.accept(socket);
+    } catch (std::runtime_error e) {
+        assert(false);
+    }
 
     Message message;
     socket.async_recv(message, [&message](const MessageSocket::MessageResult mr) {
@@ -167,4 +176,65 @@ TEST_F(RequestTest, recv_1000_msg) {
     EXPECT_EQ(recv_count, 1000);
 }
 
+
+TEST_F(RequestTest, consistent_recv) {
+    IOService service;
+
+    Coroutine coro; 
+    coro.set_function([&service, &coro]() {
+        Timer timer(&service);
+        timer.expires_from_now(5000);
+        timer.async_wait([&coro](const ErrorCode& ec) { coro(); });
+        coro.yield();
+
+        Acceptor acceptor(&service);
+        acceptor.bind("127.0.0.1", 10087);
+        acceptor.listen();
+        for (int i = 0; i < 8; i++) {
+            axon::socket::MessageSocket socket(&service);
+            acceptor.async_accept(socket, [&coro](const ErrorCode& ec) {
+                EXPECT_EQ(ec.code(), ErrorCode::success);
+                coro();
+            });
+            coro.yield();
+            char buf[20];
+            int len = make_data(i, buf);
+            Message message(len);
+            strcpy(message.content_ptr(), buf);
+            socket.async_send(message, [&coro](const MessageSocket::MessageResult& mr) {
+                EXPECT_EQ((int)mr, MessageSocket::MessageResult::SUCCESS) ;
+                coro();
+            });
+            coro.yield();
+            // disconnect socket;
+            socket.shutdown();
+        }
+    });
+    service.post([&coro]() {coro();});
+
+    axon::socket::ConsistentSocket::Ptr socket = axon::socket::ConsistentSocket::create(&service, "127.0.0.1", 10087);
+    Message message[10];
+    int cnt = 0;
+    for (int i = 0; i < 10; i++) {
+        socket->async_recv(message[i], [&message, i, socket, &cnt](const ConsistentSocket::SocketResult& sr){
+            cnt++;
+            if (cnt <= 8) {
+                EXPECT_EQ((int)sr, ConsistentSocket::SocketResult::SUCCESS);
+            } else {
+                EXPECT_EQ((int)sr, ConsistentSocket::SocketResult::CANCELED);
+            }
+            if (!sr) {
+                printf("%d socket data: %s\n", i, message[i].content_ptr());
+            }
+            if (cnt == 8) {
+                printf("shuting down consist socket\n");
+                socket->shutdown();
+            }
+        });
+    }
+    Thread thr([&service](){service.run();});
+    service.run();
+    thr.join();
+    printf("run finished\n");
+}
 

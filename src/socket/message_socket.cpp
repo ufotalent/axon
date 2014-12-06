@@ -75,8 +75,8 @@ void MessageSocket::async_recv_impl(Message& msg) {
         body_ec = ec;
         coro_recv_();
     });
-    printf("got body\n");
     coro_recv_.yield();
+    printf("got body\n");
     if (body_ec != ErrorCode::success) {
         io_service_->post(std::bind(std::move(recv_callback_), MessageResult::SOCKET_FAIL));
     }

@@ -28,7 +28,7 @@ public:
 
     typedef std::function<void(const MessageResult&)> CallBack;
 
-    // Hint: both the following two methods are not reenterable until callback initiated
+    // Hint: both the following two methods are not reenterable until operation completely done
     void async_recv(Message& msg, CallBack callback);
 
     // content of buffer will be held by socket

@@ -1,8 +1,11 @@
 #include "socket/consistent_socket.hpp"
 #include <cassert>
+#include <cstring>
+#include "buffer/nonfree_sequence_buffer.hpp"
 
 using namespace axon::socket;
 using namespace axon::util;
+using namespace axon::buffer;
 ConsistentSocket::ConsistentSocket(axon::service::IOService * service):
     io_service_(service),
     base_socket_(service),
@@ -46,16 +49,11 @@ void ConsistentSocket::connect_loop() {
         status_ &= ~SOCKET_READY;
         // do connection
         ErrorCode connect_ec = -1;
-        printf("%p make share 2\n", this);
-        Ptr ptr = shared_from_this();
-        base_socket_.async_connect(addr_, port_, [&connect_ec, ptr, this](const ErrorCode& ec, size_t bt) {
-            Ptr _ref __attribute__((unused)) = ptr;
+        base_socket_.async_connect(addr_, port_, safe_callback([&connect_ec, this](const ErrorCode& ec, size_t bt) {
             printf("async connect callback\n");
-            axon::util::ScopedLock lock(&mutex_);
             connect_ec = ec;
             connect_coro_();
-        });
-        ptr.reset();
+        }));
         connect_coro_.yield();
         
         assert(connect_ec != -1);
@@ -131,34 +129,58 @@ void ConsistentSocket::read_loop() {
         printf("entering read loop\n");
 
         Operation& op = read_queue_.front();
-        MessageSocket::MessageResult recv_result = MessageSocket::MessageResult::UNKNOWN;
-        printf("make share 5\n");
-        Ptr ptr = shared_from_this();
-        base_socket_.async_recv(op.message, [this, ptr, &recv_result](const MessageSocket::MessageResult& mr) {
-            Ptr _ref __attribute__((unused)) = ptr;
-            axon::util::ScopedLock lock(&mutex_);
-            recv_result = mr;
+        Message& message = op.message;
+        NonfreeSequenceBuffer<char> buffer;
+
+        buffer.prepare(sizeof(Message::MessageHeader));
+        axon::util::ErrorCode header_ec = -1;
+        base_socket_.async_recv_all(buffer, safe_callback([this, &header_ec](const ErrorCode& ec, size_t bt) {
+            header_ec = ec;
             printf("enter by callback\n");
             read_coro_();
-        });
-        ptr.reset();
+        }));
         read_coro_.yield();
 
-        if (recv_result == MessageSocket::MessageResult::UNKNOWN) {
+        if (header_ec.code() == -1) {
             printf("ERROR: corrupted read loop\n");
         }
-        assert(int(recv_result) != MessageSocket::MessageResult::UNKNOWN);
+        assert(header_ec.code() != -1);
+        printf("got header\n");
         // by this time the socket may be reconnecting or shutdown
-        if (!(status_ & SOCKET_READY) || recv_result != MessageSocket::MessageResult::SUCCESS) {
-            status_ &= ~SOCKET_READY;
-            // read failed, initiate connection
-            if (should_connect_ && !(status_ & SOCKET_CONNECTING)) {
-                printf("read failed, do reconnection\n");
-                connect_coro_();
-            }
+        if (!(status_ & SOCKET_READY) || header_ec != ErrorCode::success) {
+            printf("got header fail\n");
+            do_reconnect();
+            continue;
+        }
+        // check header valid
+        Message::MessageHeader* header = reinterpret_cast<Message::MessageHeader*>(buffer.read_head());
+        if (buffer.read_size() != sizeof(Message::MessageHeader) ||
+            memcmp(Message::AXON_MESSAGE_SIGNATURE, header->signature, sizeof(Message::AXON_MESSAGE_SIGNATURE)) != 0) {
+            printf("invalid header\n");
+            do_reconnect();
+            continue;
+        }
+        // read message body
+        buffer.prepare(header->content_length);
+        axon::util::ErrorCode body_ec = -1;
+        base_socket_.async_recv_all(buffer, safe_callback([this, &body_ec](const ErrorCode& ec, size_t bt) {
+            body_ec = ec;
+            printf("enter by callback\n");
+            read_coro_();
+        }));
+        read_coro_.yield();
+        if (body_ec.code() == -1) {
+            printf("ERROR: corrupted read loop\n");
+        }
+        assert(body_ec.code() != -1);
+        printf("got body\n");
+        if (!(status_ & SOCKET_READY) || body_ec != ErrorCode::success) {
+            printf("got body fail\n");
+            do_reconnect();
             continue;
         }
 
+        message.set_data(buffer.read_head(), buffer.read_size());
         // read success
         io_service_->post(std::bind(op.callback, SocketResult::SUCCESS));
         read_queue_.pop();
@@ -176,28 +198,27 @@ void ConsistentSocket::write_loop() {
         printf("write_queue_ cnt %lu\n", write_queue_.size());
         status_ |= SOCKET_WRITING;
 
+        // prepare data
         Operation& op = write_queue_.front();
-        MessageSocket::MessageResult send_result = MessageSocket::MessageResult::UNKNOWN;
+        Message& message = op.message;
+        send_buffer_.reset();
+        send_buffer_.prepare(message.length());
+        memcpy(send_buffer_.write_head(), message.data(), message.length());
+        send_buffer_.accept(message.length());
+
+        ErrorCode send_ec = -1;
         printf("make share 1\n");
-        Ptr ptr = shared_from_this();
-        base_socket_.async_send(op.message, [this, ptr, &send_result](const MessageSocket::MessageResult& mr) {
-            Ptr _ref __attribute__((unused)) = ptr;
-            axon::util::ScopedLock lock(&mutex_);
-            send_result = mr;
+        base_socket_.async_send_all(send_buffer_, safe_callback([this, &send_ec](const ErrorCode& ec, size_t bt) {
+            send_ec = ec;
             write_coro_();
-        });
-        ptr.reset();
+        }));
         write_coro_.yield();
 
-        assert(int(send_result) != MessageSocket::MessageResult::UNKNOWN);
+        assert(send_ec != -1);
         // by this time the socket may be reconnecting or shutdown
-        if (!(status_ & SOCKET_READY) || send_result != MessageSocket::MessageResult::SUCCESS) {
-            status_ &= ~SOCKET_READY;
-            // write failed, initiate connection
-            if (should_connect_ && !(status_ & SOCKET_CONNECTING)) {
-                printf("send failed, do reconnection\n");
-                connect_coro_();
-            }
+        if (!(status_ & SOCKET_READY) || send_ec!= ErrorCode::success) {
+            printf("send failed, do reconnection\n");
+            do_reconnect();
             continue;
         }
 

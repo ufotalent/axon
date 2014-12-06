@@ -181,7 +181,6 @@ TEST_F(RequestTest, recv_1000_msg) {
     EXPECT_EQ(recv_count, 1000);
 }
 
-/*
 TEST_F(RequestTest, consistent_recv) {
     IOService service;
 
@@ -251,7 +250,6 @@ TEST_F(RequestTest, consistent_recv) {
     printf("run finished\n");
 }
 
-*/
 TEST_F(RequestTest, consistent_shutdown) {
     IOService service;
 

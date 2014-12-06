@@ -3,9 +3,11 @@
 #include <memory>
 #include <queue>
 #include "service/io_service.hpp"
-#include "socket/message_socket.hpp"
 #include "util/coroutine.hpp"
 #include "util/timer.hpp"
+#include "buffer/nonfree_sequence_buffer.hpp"
+#include "ip/tcp/socket.hpp"
+#include "socket/message.hpp"
 
 namespace axon {
 namespace socket {
@@ -30,7 +32,7 @@ public:
         operator int() const { return result_; }
     };
     typedef std::function<void(const SocketResult&)> CallBack;
-    typedef axon::socket::MessageSocket BaseSocket;
+    typedef axon::ip::tcp::Socket BaseSocket;
     typedef std::shared_ptr<ConsistentSocket> Ptr;
     void async_recv(axon::socket::Message& message, CallBack callback);
     void async_send(axon::socket::Message& message, CallBack callback);
@@ -59,6 +61,7 @@ protected:
     bool should_connect_;
     uint32_t status_;
     pthread_mutex_t mutex_;
+    axon::buffer::NonfreeSequenceBuffer<char> send_buffer_;
 
     struct Operation {
         Message& message;
@@ -85,7 +88,27 @@ private:
             }
         };
     }
+    std::function<void(const axon::util::ErrorCode&, size_t)> safe_callback(std::function<void(const axon::util::ErrorCode&, size_t)> handler) {
+        Ptr ptr = shared_from_this();
+        return [this, ptr, handler](const axon::util::ErrorCode& ec, size_t bt) {
+            Ptr _ref __attribute__((unused)) = ptr;
+            axon::util::ScopedLock lock(&this->mutex_);
+            handler(ec, bt);
+        };
+    
+    }
     void init_coros();
+    void do_reconnect() {
+        status_ &= ~SOCKET_READY;
+        // read failed, initiate connection
+        if (should_connect_ && !(status_ & SOCKET_CONNECTING)) {
+            printf("get header failed, do reconnection\n");
+            connect_coro_();
+        } else {
+            printf("not reconnecting for should_connect_ %d status %d\n", should_connect_, status_);
+        }
+
+    }
 };
 
 }

@@ -4,7 +4,7 @@
 
 using namespace axon::util;
 Coroutine::Coroutine(): 
-    stack_(1024 * 1024 * 5, 0), 
+    stack_(1024 * 1024 * 10, 0), 
     context_callee_(NULL), 
     call_(std::function<void()>()) {
     pthread_mutex_init(&mutex_, NULL);
@@ -17,6 +17,7 @@ void Coroutine::set_function(std::function<void()>&& f) {
 
 void Coroutine::operator()() {
     axon::util::ScopedLock lock(&mutex_);
+    printf("coro exec%p\n", this);
     boost::context::jump_fcontext(&context_caller_, context_callee_, (intptr_t)this);
     if (exception_ != std::exception_ptr()) {
         std::rethrow_exception(exception_);
@@ -28,11 +29,13 @@ void Coroutine::yield() {
 
 void Coroutine::dispatch(intptr_t arg) {
     Coroutine *co = (Coroutine*) arg;
+    printf("coro dispatching %p\n", co);
     try {
         co->call_();
     } catch (...) {
         co->exception_ = std::current_exception();
     }
+    printf("coro clearning%p\n", co);
     co->call_ = std::function<void()>();
     co->yield();
     // guard 

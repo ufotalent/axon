@@ -15,14 +15,17 @@ private:
     ConsistentSocket(axon::service::IOService* service);
     ConsistentSocket(axon::service::IOService* service, const std::string& addr, uint32_t port);
 public:
+    ~ConsistentSocket();
     struct SocketResult {
         enum socket_result_t {
             SUCCESS = 0,
             CANCELED = 1,
             BUFFER_FULL = 2,
-            DOWN = 3
+            DOWN = 3,
+            UNKNOWN = 4
         };
         socket_result_t result_;
+        SocketResult():SocketResult(UNKNOWN) {}
         SocketResult(int result): result_(static_cast<socket_result_t>(result)) {}
         operator int() const { return result_; }
     };
@@ -30,7 +33,9 @@ public:
     typedef axon::socket::MessageSocket BaseSocket;
     typedef std::shared_ptr<ConsistentSocket> Ptr;
     void async_recv(axon::socket::Message& message, CallBack callback);
+    void async_send(axon::socket::Message& message, CallBack callback);
     void shutdown();
+    void start_connecting();
     enum SocketStatus {
         SOCKET_CONNECTING = 1,
         SOCKET_READY = 2,
@@ -48,7 +53,7 @@ protected:
 
     axon::service::IOService* io_service_;
     BaseSocket base_socket_;
-    axon::util::Timer reconnect_timer_;
+    axon::util::Timer reconnect_timer_, wait_timer_;
     std::string addr_;
     uint32_t port_;
     bool should_connect_;
@@ -69,10 +74,15 @@ private:
     void write_loop();
     axon::util::Coroutine connect_coro_, read_coro_, write_coro_;
 
-    std::function<void()> wrap(axon::util::Coroutine& coro) {
-        return [&coro, this]() {
+    std::function<void()> wrap(axon::util::Coroutine& coro, int flag) {
+        Ptr ptr = shared_from_this();
+        return [&coro, this, flag, ptr]() {
+            Ptr _ref __attribute__((unused)) = ptr;
             axon::util::ScopedLock lock(&this->mutex_);
-            coro();
+            if (!(status_ & flag)) {
+                printf("enter by wrap %d %d\n", status_, flag);
+                coro();
+            }
         };
     }
     void init_coros();

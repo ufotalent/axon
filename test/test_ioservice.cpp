@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include "service/io_service.hpp"
 #include <unistd.h>
+#include "util/util.hpp"
 
 bool result[10000000];
 class IOServiceTest: public ::testing::Test {
@@ -88,8 +89,9 @@ TEST_F(IOServiceTest, single_call_back_work_block) {
         });
     axon::service::IOService::Work *work = new axon::service::IOService::Work(*service);
     pthread_t thread;
-    pthread_create(&thread, NULL, &remove_work, work);
+    ENSURE_RETURN_ZERO_PERROR(pthread_create(&thread, NULL, &remove_work, work));
     service->run();
+    pthread_join(thread, NULL);
     EXPECT_EQ(call_flag_, true);
 }
 
@@ -97,14 +99,15 @@ TEST_F(IOServiceTest, one_producer_100_worker) {
     const int nt = 100;
     const int nn = 1000000;
     pthread_t threads[nt];
-    for (int i = 0; i < nt; i++) {
-        pthread_create(&threads[i], NULL, poll_thread, this);
-    }
 
     for (int j = 0; j < nn; j++) {
         service->post([j](){
             result[j] = true;
             });
+    }
+
+    for (int i = 0; i < nt; i++) {
+        ENSURE_RETURN_ZERO_PERROR(pthread_create(&threads[i], NULL, poll_thread, this));
     }
 
     printf("will close\n");
@@ -129,10 +132,10 @@ TEST_F(IOServiceTest, 100_producer_100_worker) {
         arg[i][1] = (void*)((long)i);
         arg[i][2] = (void*)(nt);
         arg[i][3] = (void*)(nn/nt);
-        pthread_create(&threads_post[i], NULL, post_thread, arg[i]);
+        ENSURE_RETURN_ZERO_PERROR(pthread_create(&threads_post[i], NULL, post_thread, arg[i]));
     }
     for (int i = 0; i < nt; i++) {
-        pthread_create(&threads[i], NULL, poll_thread, this);
+        ENSURE_RETURN_ZERO_PERROR(pthread_create(&threads[i], NULL, poll_thread, this));
     }
 
     for (int i = 0; i < nt; i++) {
@@ -165,8 +168,8 @@ TEST_F(IOServiceTest, 100_producer_100_worker_run) {
         arg[i][1] = (void*)((long)i);
         arg[i][2] = (void*)(nt);
         arg[i][3] = (void*)(nn/nt);
-        pthread_create(&threads[i], NULL, run_thread, this);
-        pthread_create(&threads_post[i], NULL, post_thread, arg[i]);
+        ENSURE_RETURN_ZERO_PERROR(pthread_create(&threads[i], NULL, run_thread, this));
+        ENSURE_RETURN_ZERO_PERROR(pthread_create(&threads_post[i], NULL, post_thread, arg[i]));
     }
 
     for (int i = 0; i < nt; i++) {
@@ -175,10 +178,11 @@ TEST_F(IOServiceTest, 100_producer_100_worker_run) {
 
     printf("will close\n");
     pthread_t thread;
-    pthread_create(&thread, NULL, &remove_work, work);
+    ENSURE_RETURN_ZERO_PERROR(pthread_create(&thread, NULL, &remove_work, work));
     for (int i = 0; i < nt; i++) {
         pthread_join(threads[i], NULL);
     }
+    pthread_join(thread, NULL);
 
 
     for (int i = 0; i < nn; i++) {
@@ -198,8 +202,8 @@ TEST_F(IOServiceTest, 2_producer_2_worker_run_with_work) {
         arg[i][1] = (void*)((long)i);
         arg[i][2] = (void*)(nt);
         arg[i][3] = (void*)(nn/nt);
-        pthread_create(&threads[i], NULL, run_thread, this);
-        pthread_create(&threads_post[i], NULL, post_thread_with_work, arg[i]);
+        ENSURE_RETURN_ZERO_PERROR(pthread_create(&threads[i], NULL, run_thread, this));
+        ENSURE_RETURN_ZERO_PERROR(pthread_create(&threads_post[i], NULL, post_thread_with_work, arg[i]));
     }
 
     for (int i = 0; i < nt; i++) {
@@ -208,10 +212,11 @@ TEST_F(IOServiceTest, 2_producer_2_worker_run_with_work) {
 
     printf("will close\n");
     pthread_t thread;
-    pthread_create(&thread, NULL, &remove_work, work);
+    ENSURE_RETURN_ZERO_PERROR(pthread_create(&thread, NULL, &remove_work, work));
     for (int i = 0; i < nt; i++) {
         pthread_join(threads[i], NULL);
     }
+    pthread_join(thread, NULL);
 
 
     for (int i = 0; i < nn; i++) {
@@ -233,8 +238,8 @@ TEST_F(IOServiceTest, 8_producer_8_worker_run_with_work) {
         arg[i][1] = (void*)((long)i);
         arg[i][2] = (void*)(nt);
         arg[i][3] = (void*)(nn/nt);
-        pthread_create(&threads[i], NULL, run_thread, this);
-        pthread_create(&threads_post[i], NULL, post_thread_with_work, arg[i]);
+        ENSURE_RETURN_ZERO_PERROR(pthread_create(&threads[i], NULL, run_thread, this));
+        ENSURE_RETURN_ZERO_PERROR(pthread_create(&threads_post[i], NULL, post_thread_with_work, arg[i]));
     }
 
     for (int i = 0; i < nt; i++) {
@@ -243,10 +248,11 @@ TEST_F(IOServiceTest, 8_producer_8_worker_run_with_work) {
 
     printf("will close\n");
     pthread_t thread;
-    pthread_create(&thread, NULL, &remove_work, work);
+    ENSURE_RETURN_ZERO_PERROR(pthread_create(&thread, NULL, &remove_work, work));
     for (int i = 0; i < nt; i++) {
         pthread_join(threads[i], NULL);
     }
+    pthread_join(thread, NULL);
 
 
     for (int i = 0; i < nn; i++) {
@@ -267,8 +273,8 @@ TEST_F(IOServiceTest, 8_producer_8_worker_run_remove_work_at_last) {
         arg[i][1] = (void*)((long)i);
         arg[i][2] = (void*)(nt);
         arg[i][3] = (void*)(nn/nt);
-        pthread_create(&threads[i], NULL, run_thread, this);
-        pthread_create(&threads_post[i], NULL, post_thread_with_work, arg[i]);
+        ENSURE_RETURN_ZERO_PERROR(pthread_create(&threads[i], NULL, run_thread, this));
+        ENSURE_RETURN_ZERO_PERROR(pthread_create(&threads_post[i], NULL, post_thread_with_work, arg[i]));
     }
 
     for (int i = 0; i < nt; i++) {
@@ -278,10 +284,11 @@ TEST_F(IOServiceTest, 8_producer_8_worker_run_remove_work_at_last) {
     sleep(10);
     printf("will close\n");
     pthread_t thread;
-    pthread_create(&thread, NULL, &remove_work, work);
+    ENSURE_RETURN_ZERO_PERROR(pthread_create(&thread, NULL, &remove_work, work));
     for (int i = 0; i < nt; i++) {
         pthread_join(threads[i], NULL);
     }
+    pthread_join(thread, NULL);
 
 
     for (int i = 0; i < nn; i++) {

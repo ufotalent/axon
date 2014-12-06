@@ -8,6 +8,7 @@
 #include "event/recv_event.hpp"
 #include "buffer/nonfree_sequence_buffer.hpp"
 #include "event/event_service.hpp"
+#include "util/test_util.hpp"
 
 namespace {
 std::string data = "test data";
@@ -19,6 +20,7 @@ const int max_write_cnt = 5087;
 const int socket_cnt = 100;
 int read_fds[socket_cnt];
 int write_fds[socket_cnt];
+int test_port;
 }
 using namespace axon::util;
 using namespace axon::event;
@@ -27,6 +29,7 @@ using namespace axon::buffer;
 class EventTest: public ::testing::Test {
 protected:
     virtual void SetUp() {
+        test_port = TestUtil::available_local_port();
     }
 
     virtual void TearDown() {
@@ -43,7 +46,7 @@ protected:
         sockaddr_in addr;
         memset(&addr, 0, sizeof(addr));
         addr.sin_family = AF_INET;
-        addr.sin_port = htons(10086);
+        addr.sin_port = htons(test_port);
         inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
         ASSERT_EQ(bind(sfd, (sockaddr*)&addr, sizeof(addr)), 0);
         ASSERT_EQ(listen(sfd, 128), 0);
@@ -67,7 +70,7 @@ void* event_write_thread(void* ) {
     sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    addr.sin_port =  htons(10086);
+    addr.sin_port =  htons(test_port);
     inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
     while (true) {
         if (connect(write_fd, (sockaddr*)&addr, sizeof(addr))==0) {
@@ -98,7 +101,7 @@ void* event_multiple_write_thread(void* args) {
     sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    addr.sin_port =  htons(10086);
+    addr.sin_port =  htons(test_port);
     inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
     while (true) {
         if (connect(write_fds[offset], (sockaddr*)&addr, sizeof(addr))==0) {

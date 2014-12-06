@@ -9,6 +9,7 @@
 #include "ip/tcp/acceptor.hpp"
 #include "buffer/nonfree_sequence_buffer.hpp"
 #include "util/completion_condition.hpp"
+#include "util/test_util.hpp"
 
 
 namespace {
@@ -24,6 +25,7 @@ int write_fds[socket_cnt];
 int bigger_then_buffer = 4 * 1000 * 1000;
 
 bool read_success;
+int test_port;
 }
 using namespace axon::ip::tcp;
 using namespace axon::service;
@@ -32,6 +34,7 @@ using namespace axon::buffer;
 class SocketTest: public ::testing::Test {
 protected:
     virtual void SetUp() {
+        test_port = TestUtil::available_local_port();
     }
 
     virtual void TearDown() {
@@ -53,7 +56,7 @@ void* socket_write_thread(void* args) {
     sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    addr.sin_port =  htons(10086);
+    addr.sin_port =  htons(test_port);
     inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
     while (true) {
         if (connect(write_fd, (sockaddr*)&addr, sizeof(addr))==0) {
@@ -88,7 +91,7 @@ void* socket_write_alot_thread(void* args) {
     sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    addr.sin_port =  htons(10086);
+    addr.sin_port =  htons(test_port);
     inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
     while (true) {
         if (connect(write_fd, (sockaddr*)&addr, sizeof(addr))==0) {
@@ -124,7 +127,7 @@ void* socket_multiple_write_thread(void* args) {
     sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    addr.sin_port =  htons(10086);
+    addr.sin_port =  htons(test_port);
     inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
     while (true) {
         if (connect(write_fds[offset], (sockaddr*)&addr, sizeof(addr))==0) {
@@ -159,7 +162,7 @@ void* socket_read_thread(void*) {
     sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    addr.sin_port =  htons(10086);
+    addr.sin_port =  htons(test_port);
     inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
 
     sleep(2);
@@ -191,7 +194,7 @@ void* socket_keep_read_thread(void*) {
     sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    addr.sin_port =  htons(10086);
+    addr.sin_port =  htons(test_port);
     inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
 
     sleep(2);
@@ -238,7 +241,7 @@ void* socket_accept_thread(void*) {
     IOService service;
     Socket sock(&service);
     Acceptor acceptor(&service);
-    acceptor.bind("127.0.0.1", 10086);
+    acceptor.bind("127.0.0.1", test_port);
     acceptor.listen();
     printf("listened\n");
     acceptor.accept(sock);
@@ -264,7 +267,7 @@ TEST_F(SocketTest, test_connect) {
     sleep(1);
     IOService service;
     Socket sock(&service);
-    sock.connect("127.0.0.1", 10086);
+    sock.connect("127.0.0.1", test_port);
     printf("connected\n");
 
 
@@ -291,7 +294,7 @@ TEST_F(SocketTest, test_async_connect) {
     sleep(1);
     IOService service;
     Socket sock(&service);
-    sock.async_connect("127.0.0.1", 10086, [&sock](const ErrorCode& ec, size_t) {
+    sock.async_connect("127.0.0.1", test_port, [&sock](const ErrorCode& ec, size_t) {
 
         printf("connected\n");
 
@@ -353,7 +356,7 @@ TEST_F(SocketTest, recv) {
     IOService service;
     Socket sock(&service);
     Acceptor acceptor(&service);
-    acceptor.bind("127.0.0.1", 10086);
+    acceptor.bind("127.0.0.1", test_port);
     acceptor.listen();
     acceptor.accept(sock);
 
@@ -379,7 +382,7 @@ TEST_F(SocketTest, recv_until) {
     IOService service;
     Socket sock(&service);
     Acceptor acceptor(&service);
-    acceptor.bind("127.0.0.1", 10086);
+    acceptor.bind("127.0.0.1", test_port);
     acceptor.listen();
     acceptor.accept(sock);
 
@@ -408,7 +411,7 @@ TEST_F(SocketTest, recv_until_10000_bytes) {
     IOService service;
     Socket sock(&service);
     Acceptor acceptor(&service);
-    acceptor.bind("127.0.0.1", 10086);
+    acceptor.bind("127.0.0.1", test_port);
     acceptor.listen();
     acceptor.accept(sock);
 
@@ -440,7 +443,7 @@ TEST_F(SocketTest, recv_until_exactly_10000_bytes) {
     IOService service;
     Socket sock(&service);
     Acceptor acceptor(&service);
-    acceptor.bind("127.0.0.1", 10086);
+    acceptor.bind("127.0.0.1", test_port);
     acceptor.listen();
     acceptor.accept(sock);
 
@@ -470,7 +473,7 @@ TEST_F(SocketTest, recv_until_contains) {
     IOService service;
     Socket sock(&service);
     Acceptor acceptor(&service);
-    acceptor.bind("127.0.0.1", 10086);
+    acceptor.bind("127.0.0.1", test_port);
     acceptor.listen();
     acceptor.accept(sock);
 
@@ -503,7 +506,7 @@ TEST_F(SocketTest, recv_remote_close) {
     IOService service;
     Socket sock(&service);
     Acceptor acceptor(&service);
-    acceptor.bind("127.0.0.1", 10086);
+    acceptor.bind("127.0.0.1", test_port);
     acceptor.listen();
     acceptor.accept(sock);
 
@@ -530,7 +533,7 @@ TEST_F(SocketTest, recv_cancel) {
     IOService service;
     Socket sock(&service);
     Acceptor acceptor(&service);
-    acceptor.bind("127.0.0.1", 10086);
+    acceptor.bind("127.0.0.1", test_port);
     acceptor.listen();
     acceptor.accept(sock);
 
@@ -571,7 +574,7 @@ namespace {
 TEST_F(SocketTest, multiple_socket_recv) {
     IOService service;
     Acceptor acceptor(&service);
-    acceptor.bind("127.0.0.1", 10086);
+    acceptor.bind("127.0.0.1", test_port);
     acceptor.listen();
 
     pthread_t threads[socket_cnt], run_threads[socket_cnt];
@@ -618,7 +621,7 @@ TEST_F(SocketTest, send) {
     IOService service;
     Socket sock(&service);
     Acceptor acceptor(&service);
-    acceptor.bind("127.0.0.1", 10086);
+    acceptor.bind("127.0.0.1", test_port);
     acceptor.listen();
     acceptor.accept(sock);
 
@@ -649,7 +652,7 @@ TEST_F(SocketTest, send_exact) {
     IOService service;
     Socket sock(&service);
     Acceptor acceptor(&service);
-    acceptor.bind("127.0.0.1", 10086);
+    acceptor.bind("127.0.0.1", test_port);
     acceptor.listen();
     acceptor.accept(sock);
 
@@ -681,7 +684,7 @@ TEST_F(SocketTest, async_accept) {
     Socket sock(&service);
     Acceptor acceptor(&service);
 
-    acceptor.bind("127.0.0.1", 10086);
+    acceptor.bind("127.0.0.1", test_port);
     acceptor.listen();
 
     bool run = false;
@@ -716,7 +719,7 @@ TEST_F(SocketTest, action_after_shutdown) {
         EXPECT_EQ(ec.code(), ErrorCode::invalid_socket);
     });
     Acceptor acceptor(&service);
-    acceptor.bind("127.0.0.1", 10086);
+    acceptor.bind("127.0.0.1", test_port);
     acceptor.listen();
     acceptor.accept(sock);
 

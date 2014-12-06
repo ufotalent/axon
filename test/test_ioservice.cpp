@@ -1,9 +1,13 @@
+#include <pthread.h>
+#include <unistd.h>
+
 #include <cstdio>
 #include <functional>
+#include <stdexcept>
+
 #include <gtest/gtest.h>
-#include <pthread.h>
+
 #include "service/io_service.hpp"
-#include <unistd.h>
 #include "util/util.hpp"
 
 bool result[10000000];

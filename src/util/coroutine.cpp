@@ -1,6 +1,7 @@
 #include "util/coroutine.hpp"
-#include "util/lock.hpp"
+#include <cstdio>
 #include <boost/context/all.hpp>
+#include "util/lock.hpp"
 
 using namespace axon::util;
 Coroutine::Coroutine(): 

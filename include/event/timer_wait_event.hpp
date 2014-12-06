@@ -1,6 +1,7 @@
 #pragma once
 #include <unistd.h>
 #include <string.h>
+#include <errno.h>
 #include "event/event.hpp"
 #include "service/io_service.hpp"
 #include "util/util.hpp"

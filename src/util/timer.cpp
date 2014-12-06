@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <stdexcept>
 #include "util/timer.hpp"
 #include "util/util.hpp"
 #include "event/event_service.hpp"

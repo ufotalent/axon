@@ -64,6 +64,8 @@ TEST_F(MiscTest, corotine) {
     int val = 0;
     Coroutine coro;
     std::function<void()> func = [&val, &coro] {
+        int stack = 0;
+        printf("stack addr %p\n", &stack);
         val++;
         coro.yield();
         val++;
@@ -156,4 +158,30 @@ TEST_F(MiscTest, multiple_timer) {
     for (int i = 0; i < timer_count; i++) {
         delete timers[i];
     }
+}
+
+TEST_F(MiscTest, nested_coro) {
+    Coroutine coro1;
+    Coroutine coro2;
+    int n = 0;
+    coro2.set_function([&coro2, &n]() {
+        n++;
+        coro2.yield();
+        n++;
+        coro2.yield();
+        n++;
+    });
+    coro1.set_function([&coro1, &coro2]() {
+        coro2();
+        coro1.yield();
+        coro2();
+        coro1.yield();
+        coro2();
+    });
+    coro1();
+    EXPECT_EQ(n, 1);
+    coro1();
+    EXPECT_EQ(n, 2);
+    coro1();
+    EXPECT_EQ(n, 3);
 }

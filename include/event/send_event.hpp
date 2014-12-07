@@ -29,7 +29,6 @@ public:
             return false;
         }
 
-        perror("send error");
         switch(errno) {
         case EPIPE:
             ec_ = axon::util::ErrorCode::socket_closed;

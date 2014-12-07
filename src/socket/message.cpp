@@ -7,16 +7,20 @@ Message::Message() :
     Message(0) {
 }
 
-Message::Message(uint32_t content_length):
-    holder_(content_length + sizeof(MessageHeader), 0) {
-
-    MessageHeader *header_ = header();
-    memcpy(header_->signature, AXON_MESSAGE_SIGNATURE, sizeof(AXON_MESSAGE_SIGNATURE));
-    header_->content_length = content_length;
+Message::Message(uint32_t content_length) {
+    set_size(content_length);
 }
+
 
 Message::Message(const char* data, uint32_t len):
     holder_(data, data + len) {
+}
+
+void Message::set_size(uint32_t content_length) {
+    holder_.resize(content_length + sizeof(MessageHeader));
+    MessageHeader *header_ = header();
+    memcpy(header_->signature, AXON_MESSAGE_SIGNATURE, sizeof(AXON_MESSAGE_SIGNATURE));
+    header_->content_length = content_length;
 }
 
 void Message::set_data(const char* data, uint32_t len) {

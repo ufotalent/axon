@@ -38,6 +38,11 @@ public:
     void async_send(axon::socket::Message& message, CallBack callback);
     void shutdown();
     void start_connecting();
+
+    // following two methods are used to set an accepted (not connecting to anyware) socket ready
+    BaseSocket& base_socket() { return base_socket_; };
+    void set_ready() { status_ |= SOCKET_READY; }
+
     enum SocketStatus {
         SOCKET_CONNECTING = 1,
         SOCKET_READY = 2,
@@ -83,7 +88,6 @@ private:
             Ptr _ref __attribute__((unused)) = ptr;
             axon::util::ScopedLock lock(&this->mutex_);
             if (!(status_ & flag)) {
-                printf("enter by wrap %d %d\n", status_, flag);
                 coro();
             }
         };
@@ -102,10 +106,12 @@ private:
         status_ &= ~SOCKET_READY;
         // read failed, initiate connection
         if (should_connect_ && !(status_ & SOCKET_CONNECTING)) {
-            printf("get header failed, do reconnection\n");
+            printf("do reconnection\n");
+            fflush(stdout);
             connect_coro_();
         } else {
             printf("not reconnecting for should_connect_ %d status %d\n", should_connect_, status_);
+            fflush(stdout);
         }
 
     }

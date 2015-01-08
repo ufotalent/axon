@@ -15,7 +15,6 @@ Coroutine::Coroutine():
 
     ENSURE_RETURN_ZERO_PERROR(posix_memalign((void**)&stack_, pagesize, stack_size_));
     //ENSURE_RETURN_ZERO_PERROR(mprotect(stack_, pagesize, PROT_NONE));
-    printf("stack size %p to %p\n", stack_, stack_ + stack_size_);
     pthread_mutex_init(&mutex_, NULL);
 }
 Coroutine::~Coroutine() {

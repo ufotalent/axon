@@ -2,6 +2,7 @@
 #include <cassert>
 #include <cstring>
 #include "buffer/nonfree_sequence_buffer.hpp"
+#include "util/log.hpp"
 
 using namespace axon::socket;
 using namespace axon::util;
@@ -40,8 +41,6 @@ void ConsistentSocket::connect_loop() {
             status_ &= ~SOCKET_CONNECTING;
             break;
         }
-        printf("enter connect\n");
-        fflush(stdout);
         status_ |= SOCKET_CONNECTING;
         status_ &= ~SOCKET_READY;
         // do connection
@@ -58,11 +57,9 @@ void ConsistentSocket::connect_loop() {
             break;
         }
         if (connect_ec != ErrorCode::success) {
-            printf("connection failed: code %d\n", connect_ec.code());
-            fflush(stdout);
+            LOG_INFO("connection failed: code %s", connect_ec.str());
             if (should_connect_) {
-                printf("reconnect in 1000 ms\n");
-                fflush(stdout);
+                LOG_INFO("reconnect in 1000 ms");
                 reconnect_timer_.expires_from_now(1000);
                 Ptr ptr = shared_from_this();
                 reconnect_timer_.async_wait([this, ptr](const ErrorCode& ec) {
@@ -82,8 +79,7 @@ void ConsistentSocket::connect_loop() {
 
         // by this time the connection is done, however operation callbacks (may be cancelled), which continues coros,  may still be on fly, we must wait until read/write operation finish.
         while ((status_ & SOCKET_WRITING) || (status_ & SOCKET_READING)) {
-            printf("still writting/reading, wait\n");
-            fflush(stdout);
+            LOG_INFO("still writting/reading, wait");
             wait_timer_.expires_from_now(10);
             axon::util::ErrorCode wait_ec = -1;
             Ptr ptr = shared_from_this();
@@ -106,15 +102,13 @@ void ConsistentSocket::connect_loop() {
         status_ &= ~SOCKET_CONNECTING;
 
 
-        printf("connected to %s:%d\n", addr_.c_str(), port_);
-        fflush(stdout);
+        LOG_INFO("connected to %s:%d", addr_.c_str(), port_);
         io_service_->post(wrap(read_coro_, SOCKET_READING | SOCKET_DOWN));
         io_service_->post(wrap(write_coro_, SOCKET_WRITING | SOCKET_DOWN));
 
         connect_coro_.yield();
     }
-    printf("connect loop exiting\n");
-    fflush(stdout);
+    LOG_DEBUG("connect loop exiting");
 }
 
 void ConsistentSocket::read_loop() {
@@ -126,7 +120,7 @@ void ConsistentSocket::read_loop() {
         }
         status_ |= SOCKET_READING;
 
-        Operation& op = read_queue_.front();
+        ReadOperation& op = read_queue_.front();
         Message& message = op.message;
         NonfreeSequenceBuffer<char> buffer;
 
@@ -139,24 +133,21 @@ void ConsistentSocket::read_loop() {
         read_coro_.yield();
 
         if (header_ec.code() == -1) {
-            printf("ERROR: corrupted read loop\n");
-            fflush(stdout);
+            LOG_FATAL("corrupted read loop");
         }
         assert(header_ec.code() != -1);
         // by this time the socket may be reconnecting or shutdown
         if (!(status_ & SOCKET_READY) || header_ec != ErrorCode::success) {
-            printf("got header fail\n");
-            fflush(stdout);
-            do_reconnect();
+            LOG_INFO("failed to get message header");
+            handle_error();
             continue;
         }
         // check header valid
         Message::MessageHeader* header = reinterpret_cast<Message::MessageHeader*>(buffer.read_head());
         if (buffer.read_size() != sizeof(Message::MessageHeader) ||
             memcmp(Message::AXON_MESSAGE_SIGNATURE, header->signature, sizeof(Message::AXON_MESSAGE_SIGNATURE)) != 0) {
-            printf("invalid header\n");
-            fflush(stdout);
-            do_reconnect();
+            LOG_INFO("invalid message header");
+            handle_error();
             continue;
         }
         // read message body
@@ -168,14 +159,12 @@ void ConsistentSocket::read_loop() {
         }));
         read_coro_.yield();
         if (body_ec.code() == -1) {
-            printf("ERROR: corrupted read loop\n");
-            fflush(stdout);
+            LOG_FATAL("corrupted read loop");
         }
         assert(body_ec.code() != -1);
         if (!(status_ & SOCKET_READY) || body_ec != ErrorCode::success) {
-            printf("got body fail\n");
-            fflush(stdout);
-            do_reconnect();
+            LOG_INFO("failed to get message body");
+            handle_error();
             continue;
         }
 
@@ -184,8 +173,7 @@ void ConsistentSocket::read_loop() {
         io_service_->post(std::bind(op.callback, SocketResult::SUCCESS));
         read_queue_.pop();
     }
-    printf("read loop exiting\n");
-    fflush(stdout);
+    LOG_DEBUG("read loop exiting");
 }
 
 void ConsistentSocket::write_loop() {
@@ -198,7 +186,7 @@ void ConsistentSocket::write_loop() {
         status_ |= SOCKET_WRITING;
 
         // prepare data
-        Operation& op = write_queue_.front();
+        WriteOperation& op = write_queue_.front();
         Message& message = op.message;
         send_buffer_.reset();
         send_buffer_.prepare(message.length());
@@ -215,9 +203,8 @@ void ConsistentSocket::write_loop() {
         assert(send_ec != -1);
         // by this time the socket may be reconnecting or shutdown
         if (!(status_ & SOCKET_READY) || send_ec!= ErrorCode::success) {
-            printf("send failed, do reconnection\n");
-            fflush(stdout);
-            do_reconnect();
+            LOG_INFO("send failed");
+            handle_error();
             continue;
         }
 
@@ -225,8 +212,7 @@ void ConsistentSocket::write_loop() {
         io_service_->post(std::bind(op.callback, SocketResult::SUCCESS));
         write_queue_.pop();
     }
-    printf("write loop exiting\n");
-    fflush(stdout);
+    LOG_DEBUG("write loop exiting");
 }
 
 void ConsistentSocket::init_coros() {
@@ -243,7 +229,7 @@ void ConsistentSocket::async_recv(axon::socket::Message& msg, CallBack callback)
     } else if (queue_full(read_queue_)) {
         io_service_->post(std::bind(callback,SocketResult::BUFFER_FULL));
     } else {
-        read_queue_.push(Operation(msg, callback));
+        read_queue_.push(ReadOperation(msg, callback));
         if (!(status_ & SOCKET_READING) && (status_ & SOCKET_READY)) {
             read_coro_();
         }
@@ -257,7 +243,7 @@ void ConsistentSocket::async_send(axon::socket::Message& msg, CallBack callback)
     } else if (queue_full(write_queue_)) {
         io_service_->post(std::bind(callback,SocketResult::BUFFER_FULL));
     } else {
-        write_queue_.push(Operation(msg, callback));
+        write_queue_.push(WriteOperation(msg, callback));
         if (!(status_ & SOCKET_WRITING) && (status_ & SOCKET_READY)) {
             write_coro_();
         }
@@ -266,6 +252,10 @@ void ConsistentSocket::async_send(axon::socket::Message& msg, CallBack callback)
 
 void ConsistentSocket::shutdown() {
     axon::util::ScopedLock lock(&mutex_);
+    // already shutdown
+    if (status_ & SOCKET_DOWN) {
+        return;
+    }
     should_connect_ = false;
     status_ |= SOCKET_DOWN;
     status_ &= ~SOCKET_READY;
@@ -278,8 +268,7 @@ void ConsistentSocket::shutdown() {
         io_service_->post(std::bind(write_queue_.front().callback, SocketResult::CANCELED));
         write_queue_.pop();
     }
-    printf("%d\n", int(status_));
-    fflush(stdout);
+    LOG_DEBUG("Consistent socket shutting down with status %d", int(status_));
     base_socket_.shutdown();
     if (!(status_ & SOCKET_CONNECTING)) {
         connect_coro_();
@@ -293,7 +282,5 @@ void ConsistentSocket::shutdown() {
 }
 
 ConsistentSocket::~ConsistentSocket() {
-    printf("deleted\n");
-    fflush(stdout);
     pthread_mutex_destroy(&mutex_);
 }

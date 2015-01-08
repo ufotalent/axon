@@ -25,6 +25,7 @@ public:
 
     MessageHeader* header() { return reinterpret_cast<MessageHeader*>(&holder_[0]);}
     const MessageHeader* header() const { return reinterpret_cast<const MessageHeader*>(&holder_[0]);}
+    const char* content_ptr() const { return (&holder_[0]) + sizeof(MessageHeader);}
     char* content_ptr() { return (&holder_[0]) + sizeof(MessageHeader);}
     uint32_t content_length() const { return holder_.size() - sizeof(MessageHeader);}
 

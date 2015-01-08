@@ -18,11 +18,8 @@ MessageSocket::MessageSocket(IOService *service):Socket(service) {
 void MessageSocket::async_recv(Message& msg, CallBack callback) {
     axon::util::ScopedLock lock(&coro_exit_mutex_);
     recv_callback_ = callback;
-    printf("start async_recv\n");
     coro_recv_.set_function(std::bind(&MessageSocket::async_recv_impl, this, std::ref(msg)));
-    printf("do coro %p\n", &coro_recv_);
     coro_recv_();
-    printf("coro done %p\n", &coro_recv_);
 }
 
 void MessageSocket::async_send(Message& msg, CallBack callback) {
@@ -40,22 +37,18 @@ void MessageSocket::async_send(Message& msg, CallBack callback) {
 }
 
 void MessageSocket::async_recv_impl(Message& msg) {
-    printf("enter recv\n");
     NonfreeSequenceBuffer<char> buffer;
 
     // read header
     buffer.prepare(sizeof(Message::MessageHeader));
     axon::util::ErrorCode header_ec;
-    printf("recv_all header\n");
     async_recv_all(buffer, [this, &header_ec](const axon::util::ErrorCode& ec, size_t bt) {
         axon::util::ScopedLock lock(&coro_exit_mutex_);
         header_ec = ec;
         coro_recv_();
     });
     coro_recv_.yield();
-    printf("got header\n");
     if (header_ec != ErrorCode::success) {
-        printf("get header failed\n");
         io_service_->post(std::bind(std::move(recv_callback_), MessageResult::SOCKET_FAIL));
         return;
     }
@@ -76,7 +69,6 @@ void MessageSocket::async_recv_impl(Message& msg) {
         coro_recv_();
     });
     coro_recv_.yield();
-    printf("got body\n");
     if (body_ec != ErrorCode::success) {
         io_service_->post(std::bind(std::move(recv_callback_), MessageResult::SOCKET_FAIL));
     }

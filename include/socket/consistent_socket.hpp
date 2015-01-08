@@ -8,6 +8,7 @@
 #include "buffer/nonfree_sequence_buffer.hpp"
 #include "ip/tcp/socket.hpp"
 #include "socket/message.hpp"
+#include "util/log.hpp"
 
 namespace axon {
 namespace socket {
@@ -17,7 +18,7 @@ private:
     ConsistentSocket(axon::service::IOService* service);
     ConsistentSocket(axon::service::IOService* service, const std::string& addr, uint32_t port);
 public:
-    ~ConsistentSocket();
+    virtual ~ConsistentSocket();
     struct SocketResult {
         enum socket_result_t {
             SUCCESS = 0,
@@ -35,6 +36,7 @@ public:
     typedef axon::ip::tcp::Socket BaseSocket;
     typedef std::shared_ptr<ConsistentSocket> Ptr;
     void async_recv(axon::socket::Message& message, CallBack callback);
+    // async_send moves the message arg away
     void async_send(axon::socket::Message& message, CallBack callback);
     void shutdown();
     void start_connecting();
@@ -68,14 +70,20 @@ protected:
     pthread_mutex_t mutex_;
     axon::buffer::NonfreeSequenceBuffer<char> send_buffer_;
 
-    struct Operation {
+    struct ReadOperation {
         Message& message;
         CallBack callback;
-        Operation(Message& message, CallBack callback):message(message), callback(callback) { }
+        ReadOperation(Message& message, CallBack callback):message(message), callback(callback) { }
     };
-    std::queue<Operation> read_queue_;
-    std::queue<Operation> write_queue_;
-    bool queue_full(const std::queue<Operation>& q) { return q.size() >= 1000; }
+    struct WriteOperation {
+        Message message;
+        CallBack callback;
+        WriteOperation(Message& message, CallBack callback):message(std::move(message)), callback(callback) { }
+    };
+    std::queue<ReadOperation> read_queue_;
+    std::queue<WriteOperation> write_queue_;
+    template <typename T>
+    bool queue_full(const T& q) { return q.size() >= 1000; }
 private:
     void connect_loop();
     void read_loop();
@@ -102,16 +110,21 @@ private:
     
     }
     void init_coros();
-    void do_reconnect() {
+    void handle_error() {
         status_ &= ~SOCKET_READY;
-        // read failed, initiate connection
+        // if this socket is not connecting to anyone, just shut it down
+        if (!should_connect_ && !(status_ & SOCKET_DOWN)) {
+            Ptr ptr = shared_from_this();
+            io_service_->post([ptr]() {
+                ptr->shutdown(); 
+            });
+        }
+        // otherwise, try reconnection
         if (should_connect_ && !(status_ & SOCKET_CONNECTING)) {
-            printf("do reconnection\n");
-            fflush(stdout);
+            LOG_INFO("do reconnection");
             connect_coro_();
         } else {
-            printf("not reconnecting for should_connect_ %d status %d\n", should_connect_, status_);
-            fflush(stdout);
+            LOG_INFO("not reconnecting for should_connect_ %d status %d", should_connect_, status_);
         }
 
     }

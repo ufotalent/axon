@@ -19,7 +19,7 @@ class Socket: public axon::util::Noncopyable {
 public:
     typedef std::function<void(const axon::util::ErrorCode&, size_t)> CallBack;
     Socket(axon::service::IOService* io_service);
-    ~Socket();
+    virtual ~Socket();
 
     template <class Buffer>
     void async_recv(Buffer& buf, CallBack callback) {

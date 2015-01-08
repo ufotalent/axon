@@ -15,12 +15,11 @@ Acceptor::Acceptor(axon::service::IOService* io_service): io_service_(io_service
     fd_ev_.reset(new EventService::fd_event(fd_, io_service_));
     ev_service_->register_fd(fd_, fd_ev_);
     block_ = true;
+    shutdown_ = false;
 }
 
 Acceptor::~Acceptor() {
-    ev_service_->unregister_fd(fd_, fd_ev_);
-    close(fd_);
-    fd_ev_.reset();
+    shutdown();
     io_service_ = NULL;
     ev_service_ = NULL;
     fd_ = -1;
@@ -72,4 +71,13 @@ void Acceptor::async_accept(Socket &sock, CallBack callback) {
             sock,
             callback));
     ev_service_->start_event(ev, fd_ev_);
+}
+
+void Acceptor::shutdown() {
+    if (!shutdown_) {
+        shutdown_ = true;
+        ev_service_->unregister_fd(fd_, fd_ev_);
+        close(fd_);
+        fd_ev_.reset();
+    }
 }

@@ -399,6 +399,7 @@ bool socket_test_data[TEST_DATA_COUNT];
 
 bool socket_request_succeed[TEST_DATA_COUNT];
 std::atomic_int success_count;
+std::atomic_int op_count;
 }
 TEST_F(RequestTest, consistent_recv_send) {
     IOService service;
@@ -410,6 +411,7 @@ TEST_F(RequestTest, consistent_recv_send) {
     std::fill(socket_test_data, socket_test_data + TEST_DATA_COUNT, false);
     std::fill(socket_request_succeed, socket_request_succeed + TEST_DATA_COUNT, false);
     success_count = 0;
+    op_count = 0;
 
     bool server_exit = false;
     Coroutine coro;
@@ -425,12 +427,13 @@ TEST_F(RequestTest, consistent_recv_send) {
             socket->set_ready();
             printf("accepted\n");
             // this may make remote write fail
-            if (rand() % 100 == 0) {
+            if (rand() % 100== 0) {
                 socket->shutdown();
                 continue;
             }
             while (true) {
                 Message message;
+                op_count++;
                 socket->async_recv(message, [&coro](const ConsistentSocket::SocketResult& sr) {
                     EXPECT_EQ((int)sr, ConsistentSocket::SocketResult::SUCCESS);
                     coro();
@@ -438,18 +441,22 @@ TEST_F(RequestTest, consistent_recv_send) {
                 coro.yield();
                 EXPECT_EQ(message.content_length(), sizeof(int));
                 int id = *reinterpret_cast<int*>(message.content_ptr());
+                LOG_INFO("recved id %d", id);
                 if (id >= 0)
                     socket_test_data[id] = true;
                 // this may make remote read fail
-                if (rand() % 100 == 0) {
+                if (rand() % 100== 0) {
                     socket->shutdown();
                     break;
                 }
+                op_count++;
+                LOG_INFO("async sending");
                 socket->async_send(message, [&coro](const ConsistentSocket::SocketResult& sr) {
                     EXPECT_EQ((int)sr, ConsistentSocket::SocketResult::SUCCESS);
                     coro();
                 });
                 coro.yield();
+                LOG_INFO("async send done");
                 if (id == -1) {
                     printf("received termination signal\n");
                     socket->shutdown();
@@ -477,6 +484,7 @@ TEST_F(RequestTest, consistent_recv_send) {
                         *(reinterpret_cast<int*>(message.content_ptr())) = s;
     
                         ConsistentSocket::SocketResult result;
+                        op_count++;
                         request_socket->async_send(message, [&this_coro, i, &result](const ConsistentSocket::SocketResult& sr) {
                             result = sr;
                             this_coro();
@@ -508,19 +516,26 @@ TEST_F(RequestTest, consistent_recv_send) {
             Message message(sizeof(int));
             *(reinterpret_cast<int*>(message.content_ptr())) = -1;
             ConsistentSocket::SocketResult result;
+            op_count++;
             request_socket->async_send(message, [&result, &control_coro](const ConsistentSocket::SocketResult& sr) {
                 result = sr;
                 control_coro();
             });
             control_coro.yield();
             printf("sent termination signal\n");
-            if (server_exit) {
-                request_socket->shutdown();
-                return;
-            }
             Timer timer(&service);
             timer.expires_from_now(1000);
             timer.async_wait([&control_coro](const ErrorCode& ec){
+                control_coro();
+            });
+            control_coro.yield();
+
+            if (server_exit) {
+                service.remove_work();
+                request_socket->shutdown();
+                return;
+            }
+            request_socket->async_recv(message, [&result, &control_coro](const ConsistentSocket::SocketResult& sr) {
                 control_coro();
             });
             control_coro.yield();
@@ -532,6 +547,7 @@ TEST_F(RequestTest, consistent_recv_send) {
         while (success_count != TEST_DATA_COUNT) {
             Message message;
             ConsistentSocket::SocketResult result;
+            op_count++;
             request_socket->async_recv(message,[&check_coro, &result](const ConsistentSocket::SocketResult& sr) {
                 result = sr;
                 check_coro();
@@ -541,7 +557,6 @@ TEST_F(RequestTest, consistent_recv_send) {
                 EXPECT_EQ(message.content_length(), sizeof(int));
                 int id = *(reinterpret_cast<int*>(message.content_ptr()));
                 if (!socket_request_succeed[id]) {
-                    printf("set %d done\n", id);
                     socket_request_succeed[id] = true;
                     success_count ++;
                 }
@@ -553,9 +568,19 @@ TEST_F(RequestTest, consistent_recv_send) {
     service.post([&control_coro](){control_coro();});
     service.post([&check_coro](){check_coro();});
 
+    service.add_work();
+    Thread* threads[TEST_THREAD_COUNT];
+    for (int i = 0; i < TEST_THREAD_COUNT; i++) {
+        threads[i] = new Thread([&service](){service.run();});
+    }
     service.run();
+    for (int i = 0; i < TEST_THREAD_COUNT; i++) {
+        threads[i]->join();
+        delete threads[i];
+    }
     EXPECT_EQ(success_count.load(), TEST_DATA_COUNT);
     for (int i = 0; i < TEST_DATA_COUNT; i++) {
         EXPECT_EQ(socket_test_data[i], true);
     }
+    printf("op count %d\n", op_count.load());
 }

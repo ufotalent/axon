@@ -185,3 +185,18 @@ TEST_F(MiscTest, nested_coro) {
     coro1();
     EXPECT_EQ(n, 3);
 }
+
+TEST_F(MiscTest, coro_speed) {
+    Coroutine coro;
+    int n = 0;
+    coro.set_function([&coro, &n]() {
+        while (true) {
+            n++;
+            coro.yield();
+        }
+    });
+    for (int i = 0; i < 10000000; i++) {
+        coro();
+    }
+    EXPECT_EQ(n, 10000000);
+}

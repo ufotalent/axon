@@ -126,10 +126,12 @@ void ConsistentSocket::read_loop() {
 
         buffer.prepare(sizeof(Message::MessageHeader));
         axon::util::ErrorCode header_ec = -1;
-        base_socket_.async_recv_all(buffer, safe_callback([this, &header_ec](const ErrorCode& ec, size_t bt) {
-            header_ec = ec;
-            read_coro_();
-        }));
+        // base_socket_.async_recv_all(buffer, safe_callback([this, &header_ec](const ErrorCode& ec, size_t bt) {
+        //    header_ec = ec;
+        //    read_coro_();
+        //}));
+        
+        base_socket_.async_recv_all(buffer, std::bind(&ConsistentSocket::safe_callback_quick, this, shared_from_this(), &read_coro_, std::ref(header_ec), std::placeholders::_1, std::placeholders::_2));
         read_coro_.yield();
 
         if (header_ec.code() == -1) {
@@ -153,10 +155,13 @@ void ConsistentSocket::read_loop() {
         // read message body
         buffer.prepare(header->content_length);
         axon::util::ErrorCode body_ec = -1;
+        base_socket_.async_recv_all(buffer, std::bind(&ConsistentSocket::safe_callback_quick, this, shared_from_this(), &read_coro_, std::ref(body_ec), std::placeholders::_1, std::placeholders::_2));
+        /*
         base_socket_.async_recv_all(buffer, safe_callback([this, &body_ec](const ErrorCode& ec, size_t bt) {
             body_ec = ec;
             read_coro_();
         }));
+        */
         read_coro_.yield();
         if (body_ec.code() == -1) {
             LOG_FATAL("corrupted read loop");
@@ -194,10 +199,13 @@ void ConsistentSocket::write_loop() {
         send_buffer_.accept(message.length());
 
         ErrorCode send_ec = -1;
+        base_socket_.async_send_all(send_buffer_, std::bind(&ConsistentSocket::safe_callback_quick, this, shared_from_this(), &write_coro_, std::ref(send_ec), std::placeholders::_1, std::placeholders::_2));
+        /*
         base_socket_.async_send_all(send_buffer_, safe_callback([this, &send_ec](const ErrorCode& ec, size_t bt) {
             send_ec = ec;
             write_coro_();
         }));
+        */
         write_coro_.yield();
 
         assert(send_ec != -1);

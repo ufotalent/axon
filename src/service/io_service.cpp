@@ -33,7 +33,7 @@ IOService::~IOService() {
     stop();
 }
 
-void IOService::post(const IOService::CallBack& handler) {
+void IOService::post(IOService::CallBack handler) {
     handler_queue_.push_back(handler);
 }
 

@@ -100,6 +100,12 @@ private:
             }
         };
     }
+
+    void safe_callback_quick(Ptr ptr, axon::util::Coroutine *coro, axon::util::ErrorCode& set_ec, const axon::util::ErrorCode& ec, size_t bt) {
+        axon::util::ScopedLock lock(&ptr->mutex_);
+        set_ec = ec;
+        (*coro)();
+    }
     std::function<void(const axon::util::ErrorCode&, size_t)> safe_callback(std::function<void(const axon::util::ErrorCode&, size_t)> handler) {
         Ptr ptr = shared_from_this();
         return [this, ptr, handler](const axon::util::ErrorCode& ec, size_t bt) {

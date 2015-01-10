@@ -25,6 +25,11 @@ private:
     pthread_mutex_t mutex_;
     bool shutdown_ = false;
     void event_loop();
+    void safe_callback_quick(Ptr ptr, axon::util::Coroutine* coro, axon::socket::ConsistentSocket::SocketResult& set_result, const axon::socket::ConsistentSocket::SocketResult& result) {
+        axon::util::ScopedLock lock(&ptr->mutex_);
+        set_result = result;
+        (*coro)();
+    }
     std::function<void(const axon::socket::ConsistentSocket::SocketResult&)> safe_callback(std::function<void(const axon::socket::ConsistentSocket::SocketResult&)> handler) {
         Ptr ptr = shared_from_this();
         return [this, ptr, handler](const axon::socket::ConsistentSocket::SocketResult& sr) {

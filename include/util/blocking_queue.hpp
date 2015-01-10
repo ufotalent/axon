@@ -21,11 +21,18 @@ public:
         pthread_mutex_init(&queue_mutex_, NULL);
         pthread_cond_init(&queue_cond_, NULL);
     }
-    void push_back(const T& data) {
+    void push_back(T& data) {
         if (closed_)
             return;
         ScopedLock lock(&queue_mutex_);
-        base_queue_.push(data);
+        base_queue_.push(std::move(data));
+        pthread_cond_signal(&queue_cond_);
+    }
+    void push_back(T&& data) {
+        if (closed_)
+            return;
+        ScopedLock lock(&queue_mutex_);
+        base_queue_.push(std::move(data));
         pthread_cond_signal(&queue_cond_);
     }
 
@@ -36,7 +43,7 @@ public:
         if (base_queue_.empty()) {
             return BlockingQueueDrained;
         }
-        data = base_queue_.front();
+        data = std::move(base_queue_.front());
         base_queue_.pop();
         
         return BlockingQueueSuccess;
@@ -59,7 +66,7 @@ public:
                 return BlockingQueueInterupted;
             }
         }
-        data = base_queue_.front();
+        data = std::move(base_queue_.front());
         base_queue_.pop();
         
         return BlockingQueueSuccess;

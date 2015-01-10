@@ -38,7 +38,7 @@ public:
     bool run_one();
     void poll();
     bool poll_one();
-    void post(const CallBack& handler);
+    void post(CallBack handler);
     IOService(const IOService &) = delete;
     IOService& operator=(const IOService &) = delete;
     void add_work();

@@ -29,10 +29,13 @@ void Session::event_loop() {
     while (!shutdown_) {
         Message message;
         ConsistentSocket::SocketResult recv_result;
+        socket_->async_recv(message, std::bind(&Session::safe_callback_quick, this, shared_from_this(), &recv_coro_, std::ref(recv_result), std::placeholders::_1));
+        /*
         socket_->async_recv(message, safe_callback([this, &recv_result](const ConsistentSocket::SocketResult& sr) {
             recv_result = sr;
             recv_coro_();
         }));
+        */
         recv_coro_.yield();
 
         // if socket is shutdown, just quit

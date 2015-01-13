@@ -14,6 +14,7 @@
 #include "util/coroutine.hpp"
 #include "util/timer.hpp"
 #include "util/thread.hpp"
+#include "util/strand.hpp"
 
 using namespace axon::service;
 using namespace axon::ip::tcp;
@@ -199,4 +200,90 @@ TEST_F(MiscTest, coro_speed) {
         coro();
     }
     EXPECT_EQ(n, 10000000);
+}
+
+namespace {
+    int counter;
+}
+TEST_F(MiscTest, spinlock) {
+    counter = 0;
+    Thread *thrs[8];
+    axon::util::SpinLock lock;
+    for (int i = 0; i < 8; i++) {
+        thrs[i] = new Thread([&lock](){
+            for (int s = 0; s < 1000000; s++) {
+                lock.lock();
+                counter++;
+                lock.unlock();
+            }
+        });
+    }
+    for (int i = 0; i < 8; i++) {
+        thrs[i]->join();
+        delete thrs[i];
+    }
+    EXPECT_EQ(counter, 8 * 1000000);
+}
+
+TEST_F(MiscTest, strand_order) {
+    Thread *thrs[1];
+    IOService service;
+    Strand strand(&service);
+    int last = -1;
+    for (int i = 0; i < 1; i++) {
+        thrs[i] = new Thread([&strand, &last, &service](){
+            for (int s = 0; s < 1000000; s++) {
+                strand.post([s, &last]() {
+                    EXPECT_EQ(last + 1, s);
+                    last = s;
+                });
+            }
+            service.remove_work();
+        });
+    }
+    service.add_work();
+    service.run();
+    for (int i = 0; i < 1; i++) {
+        thrs[i]->join();
+        delete thrs[i];
+    }
+    EXPECT_EQ(last, 1 * 1000000 - 1);
+}
+
+TEST_F(MiscTest, strand_syncd) {
+    IOService service;
+    Strand strand(&service);
+    int counter = 0;
+    const int n_produce = 1;
+    const int n_run = 1;
+    const int nn = 10000000;
+    Thread *thrs[n_produce];
+    for (int i = 0; i < n_produce; i++) {
+        thrs[i] = new Thread([&strand, &counter, &service](){
+            for (int s = 0; s < nn; s++) {
+                strand.post([&counter]() {
+                    counter++;
+                });
+            }
+            service.remove_work();
+            printf("producer done\n");
+        });
+    }
+    for (int i = 0; i < n_produce; i++) {
+        service.add_work();
+    }
+    Thread *run_thrs[n_run];
+    for (int i = 0; i < n_run; i++) {
+        run_thrs[i] = new Thread(std::bind(&IOService::run, &service));
+    }
+    for (int i = 0; i < n_run; i++) {
+        run_thrs[i]->join();
+        delete run_thrs[i];
+    }
+    for (int i = 0; i < n_produce; i++) {
+        thrs[i]->join();
+        delete thrs[i];
+    }
+    EXPECT_EQ(counter, n_produce * nn);
+
 }

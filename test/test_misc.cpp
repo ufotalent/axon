@@ -254,9 +254,11 @@ TEST_F(MiscTest, strand_syncd) {
     IOService service;
     Strand strand(&service);
     int counter = 0;
-    const int n_produce = 8;
+    const int n_produce = 0;
+    const int n_dispatch = 0;
+    const int n_wrap = 8;
     const int n_run = 8;
-    const int nn = 10000000;
+    const int nn = 1000000;
     Thread *thrs[n_produce];
     for (int i = 0; i < n_produce; i++) {
         thrs[i] = new Thread([&strand, &counter, &service](){
@@ -269,21 +271,52 @@ TEST_F(MiscTest, strand_syncd) {
             printf("producer done\n");
         });
     }
-    for (int i = 0; i < n_produce; i++) {
+    Thread *thrs_dis[n_dispatch];
+    for (int i = 0; i < n_dispatch; i++) {
+        thrs_dis[i] = new Thread([&strand, &counter, &service](){
+            for (int s = 0; s < nn; s++) {
+                strand.dispatch([&counter]() {
+                    counter++;
+                });
+            }
+            service.remove_work();
+            printf("dispatcher done\n");
+        });
+    }
+    Thread *thrs_wrap[n_wrap];
+    for (int i = 0; i < n_wrap; i++) {
+        thrs_wrap[i] = new Thread([&strand, &counter, &service](){
+            for (int s = 0; s < nn; s++) {
+                service.post(strand.wrap(std::function<void()>([&counter](){
+                    counter++;
+                })));
+            }
+            service.remove_work();
+            printf("wrapper done\n");
+        });
+    }
+    for (int i = 0; i < n_produce + n_dispatch + n_wrap; i++) {
         service.add_work();
     }
     Thread *run_thrs[n_run];
     for (int i = 0; i < n_run; i++) {
         run_thrs[i] = new Thread(std::bind(&IOService::run, &service));
     }
-    for (int i = 0; i < n_run; i++) {
-        run_thrs[i]->join();
-        delete run_thrs[i];
+    for (int i = 0; i < n_dispatch; i++) {
+        thrs_dis[i]->join();
+        delete thrs_dis[i];
     }
     for (int i = 0; i < n_produce; i++) {
         thrs[i]->join();
         delete thrs[i];
     }
-    EXPECT_EQ(counter, n_produce * nn);
-
+    for (int i = 0; i < n_wrap; i++) {
+        thrs_wrap[i]->join();
+        delete thrs_wrap[i];
+    }
+    for (int i = 0; i < n_run; i++) {
+        run_thrs[i]->join();
+        delete run_thrs[i];
+    }
+    EXPECT_EQ(counter, (n_produce + n_dispatch + n_wrap) * nn);
 }

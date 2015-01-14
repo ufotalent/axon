@@ -67,19 +67,23 @@ class Strand {
         }
         return last;
     }
+
+    void do_dispatch() {
+        bool expected = false;
+        if (has_pending_tests_.compare_exchange_strong(expected, true)) {
+            perform();
+        }
+    }
 public:
     Strand(axon::service::IOService* io_service): io_service_(io_service) {
         has_pending_tests_ = false;
     }
 
-    void post(CallBack callback) {
+    void dispatch(CallBack callback) {
         queue_.push(std::move(callback));
-
-        bool expected = false;
-        if (has_pending_tests_.compare_exchange_strong(expected, true)) {
-            io_service_->post(std::bind(&Strand::perform, this));
-        }
+        do_dispatch();
     }
+    
     void perform() {
         while (true) {
             assert(has_pending_tests_);
@@ -97,7 +101,20 @@ public:
                 delete last;
             }
         }
-    
+    }
+
+    void post(CallBack callback) {
+        queue_.push(std::move(callback));
+        if (!has_pending_tests_) {
+            io_service_->post(std::bind(&Strand::do_dispatch, this));
+        }
+    }
+
+    template <class ...Args>
+    std::function<void(Args...)> wrap(std::function<void(Args...)> &&f) {
+        return [f, this](Args... args) {
+            dispatch(std::bind(f, args...));
+        };
     }
 private:
     std::atomic_bool has_pending_tests_;

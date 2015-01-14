@@ -254,8 +254,8 @@ TEST_F(MiscTest, strand_syncd) {
     IOService service;
     Strand strand(&service);
     int counter = 0;
-    const int n_produce = 1;
-    const int n_run = 1;
+    const int n_produce = 8;
+    const int n_run = 8;
     const int nn = 10000000;
     Thread *thrs[n_produce];
     for (int i = 0; i < n_produce; i++) {

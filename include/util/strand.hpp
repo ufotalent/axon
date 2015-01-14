@@ -52,6 +52,21 @@ class Strand {
 
     typedef axon::service::IOService::CallBack CallBack;
 
+    LockFreeQueue<CallBack>::Node* reverse_list(LockFreeQueue<CallBack>::Node* head) {
+        if (head == NULL || head->next == NULL) {
+            return head;
+        }
+        LockFreeQueue<CallBack>::Node* last = head;
+        LockFreeQueue<CallBack>::Node* p = head->next;
+        head->next = NULL;
+        while (p) {
+            LockFreeQueue<CallBack>::Node* next = p->next;
+            p->next = last;
+            last = p;
+            p = next;
+        }
+        return last;
+    }
 public:
     Strand(axon::service::IOService* io_service): io_service_(io_service) {
         has_pending_tests_ = false;
@@ -60,43 +75,33 @@ public:
     void post(CallBack callback) {
         queue_.push(std::move(callback));
 
-        spin_lock_.lock();
-        bool should_reschedule = !has_pending_tests_;
-        if (should_reschedule) {
-            has_pending_tests_ = true;
-        }
-        spin_lock_.unlock();
-        if (should_reschedule) {
+        bool expected = false;
+        if (has_pending_tests_.compare_exchange_strong(expected, true)) {
             io_service_->post(std::bind(&Strand::perform, this));
         }
     }
     void perform() {
         while (true) {
-            spin_lock_.lock();
             assert(has_pending_tests_);
-            if (queue_.empty()) {
-                has_pending_tests_ = false;
-                spin_lock_.unlock();
+            bool queue_empty = queue_.empty();
+            // here has_pending_tests_ = true, hence if has_pending_tests_ == queue_empty, mark it false and return
+            if (has_pending_tests_.compare_exchange_strong(queue_empty, false)) {
                 return;
             }
-            spin_lock_.unlock();
             LockFreeQueue<CallBack>::Node* list = queue_.take_all();
-            std::stack<LockFreeQueue<CallBack>::Node*> reverse_stack;
-            while (list) {
-                reverse_stack.push(list);
-                list = list->next;
-            }
-            while (!reverse_stack.empty()) {
-                reverse_stack.top()->data();
-                reverse_stack.pop();
+            LockFreeQueue<CallBack>::Node* reversed_list = reverse_list(list);
+            while (reversed_list) {
+                reversed_list->data();
+                auto last = reversed_list;
+                reversed_list = reversed_list->next;
+                delete last;
             }
         }
     
     }
 private:
-    bool has_pending_tests_;
+    std::atomic_bool has_pending_tests_;
     LockFreeQueue<axon::service::IOService::CallBack> queue_;
-    axon::util::SpinLock spin_lock_;
     axon::service::IOService* io_service_;
 
 

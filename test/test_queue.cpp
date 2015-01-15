@@ -28,12 +28,15 @@ void* read_thread(void* args) {
     QueueTest *test = (QueueTest*)args;
     int r = 0x3fffffff;
 
+    int last = -1;
     while (true) {
         auto ret = test->queue->pop_front(r);
         if (ret == axon::util::BlockingQueue<int>::BlockingQueueClosed)
             break;
-        if (ret == axon::util::BlockingQueue<int>::BlockingQueueSuccess)
+        if (ret == axon::util::BlockingQueue<int>::BlockingQueueSuccess) {
             test->res[r] = true;
+            last = r;
+        }
     }
     return NULL;
 }
@@ -53,11 +56,12 @@ void* write_thread(void* args) {
 
 
 TEST_F(QueueTest, one_product_one_consume) {
-    res.resize(100, 0);
+    int nn = 10000000;
+    res.resize(nn, 0);
 
     pthread_t thread;
     pthread_create(&thread, NULL, &read_thread, this);
-    for (int i = 0; i < 100; i++) {
+    for (int i = 0; i < nn; i++) {
         queue->push_back(i);
     }
     while (!queue->empty())
@@ -65,7 +69,7 @@ TEST_F(QueueTest, one_product_one_consume) {
     queue->close();
     pthread_join(thread, NULL);
 
-    for (int i = 0; i < 100; i++) {
+    for (int i = 0; i < nn; i++) {
         EXPECT_EQ(res[i], true);
     }
 }
@@ -98,7 +102,7 @@ TEST_F(QueueTest, one_product_100_consume) {
 }
 
 TEST_F(QueueTest, 100_product_100_consume) {
-    const int nt = 100, nn = 1000000;
+    const int nt = 100, nn = 10000000;
     res.resize(nn, 0);
     pthread_t thread_read[nt], thread_write[nt];
     void* arg[nt][4];

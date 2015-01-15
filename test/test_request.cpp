@@ -441,7 +441,6 @@ TEST_F(RequestTest, consistent_recv_send) {
                 coro.yield();
                 EXPECT_EQ(message.content_length(), sizeof(int));
                 int id = *reinterpret_cast<int*>(message.content_ptr());
-                LOG_INFO("recved id %d", id);
                 if (id >= 0)
                     socket_test_data[id] = true;
                 // this may make remote read fail
@@ -450,13 +449,11 @@ TEST_F(RequestTest, consistent_recv_send) {
                     break;
                 }
                 op_count++;
-                LOG_INFO("async sending");
                 socket->async_send(message, [&coro](const ConsistentSocket::SocketResult& sr) {
                     EXPECT_EQ((int)sr, ConsistentSocket::SocketResult::SUCCESS);
                     coro();
                 });
                 coro.yield();
-                LOG_INFO("async send done");
                 if (id == -1) {
                     printf("received termination signal\n");
                     socket->shutdown();

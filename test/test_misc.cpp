@@ -250,15 +250,15 @@ TEST_F(MiscTest, strand_order) {
     EXPECT_EQ(last, 1 * 1000000 - 1);
 }
 
-TEST_F(MiscTest, strand_syncd) {
+TEST_F(MiscTest, strand_check_syncd) {
     IOService service;
     Strand strand(&service);
     int counter = 0;
-    const int n_produce = 0;
+    const int n_produce = 8;
     const int n_dispatch = 0;
-    const int n_wrap = 8;
+    const int n_wrap = 0;
     const int n_run = 8;
-    const int nn = 1000000;
+    const int nn = 100000;
     Thread *thrs[n_produce];
     for (int i = 0; i < n_produce; i++) {
         thrs[i] = new Thread([&strand, &counter, &service](){
@@ -319,4 +319,47 @@ TEST_F(MiscTest, strand_syncd) {
         delete run_thrs[i];
     }
     EXPECT_EQ(counter, (n_produce + n_dispatch + n_wrap) * nn);
+}
+
+TEST_F(MiscTest, strand_check_done) {
+    IOService service;
+    Strand strand(&service);
+    const int n_produce = 1;
+    const int n_run = 4;
+    const int nn = 1000000;
+
+    for (int s = 0; s < 10; s++) {
+        int counter = 0;
+        Coroutine coros[n_produce];
+	    for (int i = 0; i < n_produce; i++) {
+	        coros[i].set_function([&strand, &counter, &service, &coros, i](){
+	            for (int s = 0; s < nn; s++) {
+	                counter++;
+	                service.post([&strand, &counter, &coros, i]() {
+                        strand.post([&counter, &coros, i]() {
+	                        coros[i]();
+    	                });
+                    });
+	                coros[i].yield();
+	            }
+	            service.remove_work();
+	        });
+	        strand.post([&coros, i]() {
+	            coros[i]();
+	        });
+	    }
+	    for (int i = 0; i < n_produce; i++) {
+	        service.add_work();
+	    }
+	    Thread *run_thrs[n_run];
+	    for (int i = 0; i < n_run; i++) {
+	        run_thrs[i] = new Thread(std::bind(&IOService::run, &service));
+	    }
+	    for (int i = 0; i < n_run; i++) {
+	        run_thrs[i]->join();
+	        delete run_thrs[i];
+	    }
+	    EXPECT_EQ(counter, (n_produce) * nn);
+        LOG_INFO("done %d", s);
+	}
 }

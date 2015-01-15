@@ -46,7 +46,8 @@ void Session::event_loop() {
             io_service_->post(std::bind(&Session::dispatch_request, shared_from_this(), message));
         } else {
             // recv failed, abort this session
-            rpc_service_->remove_session(shared_from_this());
+            // post this operation to avoid deadlock
+            io_service_->post(std::bind(&BaseRPCService::remove_session, this->rpc_service_, shared_from_this()));
             return;
         }
     }

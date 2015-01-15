@@ -1,7 +1,8 @@
 #include "service/io_service.hpp"
-#include "util/lock.hpp"
 #include <pthread.h>
 #include <unistd.h>
+#include "util/lock.hpp"
+#include "util/log.hpp"
 
 using namespace axon::service;
 namespace axon {
@@ -26,14 +27,17 @@ void* notify(void* arg) {
 
 IOService::IOService():stoped_(false) {
     work_count_.store(0);
+    job_count_.store(0);
     pthread_create(&notify_thread_, NULL, &notify, this);
 }
 
 IOService::~IOService() {
+    LOG_INFO("IOService handled %d callbacks", job_count_.load());
     stop();
 }
 
 void IOService::post(IOService::CallBack handler) {
+    job_count_++;
     handler_queue_.push_back(handler);
 }
 
@@ -71,7 +75,9 @@ void IOService::run() {
         CallBack callback;
         auto retcode = handler_queue_.pop_front(callback);
         if (retcode == decltype(handler_queue_)::BlockingQueueSuccess) {
+            add_work();
             callback();
+            remove_work();
         } else if (retcode == decltype(handler_queue_)::BlockingQueueClosed) {
             return;
         }
@@ -87,7 +93,9 @@ bool IOService::run_one() {
         CallBack callback;
         auto retcode = handler_queue_.pop_front(callback);
         if (retcode == decltype(handler_queue_)::BlockingQueueSuccess) {
+            add_work();
             callback();
+            remove_work();
             return true;
         } else if (retcode == decltype(handler_queue_)::BlockingQueueClosed) {
             return false;

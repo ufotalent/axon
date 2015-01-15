@@ -54,6 +54,7 @@ private:
     friend void* notify(void*);
 
     std::atomic_int work_count_;
+    std::atomic_int job_count_;
 };
 
 

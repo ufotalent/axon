@@ -27,6 +27,7 @@ public:
         bool expected = false;
         do {
             expected = false;
+            asm volatile("pause\n": : :"memory");
         } while (!spin_lock_.compare_exchange_weak(expected, true, std::memory_order_acquire, std::memory_order_relaxed));
     }
     void unlock() {

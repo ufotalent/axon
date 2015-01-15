@@ -1,6 +1,7 @@
 #pragma once
 #include <pthread.h>
 #include <queue>
+#include <atomic>
 #include <cstdlib>
 #include "lock.hpp"
 
@@ -20,18 +21,21 @@ public:
     BlockingQueue():closed_(false) {
         pthread_mutex_init(&queue_mutex_, NULL);
         pthread_cond_init(&queue_cond_, NULL);
+        count_ = 0;
     }
     void push_back(T& data) {
         if (closed_)
             return;
         ScopedLock lock(&queue_mutex_);
         base_queue_.push(std::move(data));
+        count_++;
         pthread_cond_signal(&queue_cond_);
     }
     void push_back(T&& data) {
         if (closed_)
             return;
         ScopedLock lock(&queue_mutex_);
+        count_++;
         base_queue_.push(std::move(data));
         pthread_cond_signal(&queue_cond_);
     }
@@ -45,6 +49,7 @@ public:
         }
         data = std::move(base_queue_.front());
         base_queue_.pop();
+        count_--;
         
         return BlockingQueueSuccess;
     }
@@ -68,6 +73,7 @@ public:
         }
         data = std::move(base_queue_.front());
         base_queue_.pop();
+        count_--;
         
         return BlockingQueueSuccess;
     }
@@ -83,10 +89,9 @@ public:
     }
 
     bool empty() {
-        ScopedLock lock(&queue_mutex_);
         if (closed_) 
             return true;
-        return base_queue_.empty();
+        return count_ == 0;
     }
 
     virtual ~BlockingQueue() {
@@ -99,6 +104,7 @@ private:
     pthread_cond_t queue_cond_;
     pthread_mutex_t queue_mutex_;
     volatile bool closed_;
+    std::atomic_int count_;
     
 };
 

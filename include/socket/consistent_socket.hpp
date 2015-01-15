@@ -83,7 +83,7 @@ protected:
     std::queue<ReadOperation> read_queue_;
     std::queue<WriteOperation> write_queue_;
     template <typename T>
-    bool queue_full(const T& q) { return q.size() >= 1000; }
+    bool queue_full(const T& q) { return q.size() >= 100000; }
 private:
     void connect_loop();
     void read_loop();

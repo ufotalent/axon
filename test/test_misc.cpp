@@ -228,12 +228,12 @@ TEST_F(MiscTest, spinlock) {
 TEST_F(MiscTest, strand_order) {
     Thread *thrs[1];
     IOService service;
-    Strand strand(&service);
+    Strand::Ptr strand = Strand::create(&service);
     int last = -1;
     for (int i = 0; i < 1; i++) {
         thrs[i] = new Thread([&strand, &last, &service](){
             for (int s = 0; s < 1000000; s++) {
-                strand.post([s, &last]() {
+                strand->post([s, &last]() {
                     EXPECT_EQ(last + 1, s);
                     last = s;
                 });
@@ -252,7 +252,7 @@ TEST_F(MiscTest, strand_order) {
 
 TEST_F(MiscTest, strand_check_syncd) {
     IOService service;
-    Strand strand(&service);
+    Strand::Ptr strand = Strand::create(&service);
     int counter = 0;
     const int n_produce = 8;
     const int n_dispatch = 0;
@@ -263,7 +263,7 @@ TEST_F(MiscTest, strand_check_syncd) {
     for (int i = 0; i < n_produce; i++) {
         thrs[i] = new Thread([&strand, &counter, &service](){
             for (int s = 0; s < nn; s++) {
-                strand.post([&counter]() {
+                strand->post([&counter]() {
                     counter++;
                 });
             }
@@ -275,7 +275,7 @@ TEST_F(MiscTest, strand_check_syncd) {
     for (int i = 0; i < n_dispatch; i++) {
         thrs_dis[i] = new Thread([&strand, &counter, &service](){
             for (int s = 0; s < nn; s++) {
-                strand.dispatch([&counter]() {
+                strand->dispatch([&counter]() {
                     counter++;
                 });
             }
@@ -287,7 +287,7 @@ TEST_F(MiscTest, strand_check_syncd) {
     for (int i = 0; i < n_wrap; i++) {
         thrs_wrap[i] = new Thread([&strand, &counter, &service](){
             for (int s = 0; s < nn; s++) {
-                service.post(strand.wrap(std::function<void()>([&counter](){
+                service.post(strand->wrap(std::function<void()>([&counter](){
                     counter++;
                 })));
             }
@@ -323,7 +323,7 @@ TEST_F(MiscTest, strand_check_syncd) {
 
 TEST_F(MiscTest, strand_check_done) {
     IOService service;
-    Strand strand(&service);
+    Strand::Ptr strand = Strand::create(&service);
     const int n_produce = 1;
     const int n_run = 4;
     const int nn = 1000000;
@@ -336,7 +336,7 @@ TEST_F(MiscTest, strand_check_done) {
 	            for (int s = 0; s < nn; s++) {
 	                counter++;
 	                service.post([&strand, &counter, &coros, i]() {
-                        strand.post([&counter, &coros, i]() {
+                        strand->post([&counter, &coros, i]() {
 	                        coros[i]();
     	                });
                     });
@@ -344,7 +344,7 @@ TEST_F(MiscTest, strand_check_done) {
 	            }
 	            service.remove_work();
 	        });
-	        strand.post([&coros, i]() {
+	        strand->post([&coros, i]() {
 	            coros[i]();
 	        });
 	    }

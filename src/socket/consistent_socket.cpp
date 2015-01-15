@@ -1,6 +1,7 @@
 #include "socket/consistent_socket.hpp"
 #include <cassert>
 #include <cstring>
+#include <functional>
 #include "buffer/nonfree_sequence_buffer.hpp"
 #include "util/log.hpp"
 
@@ -12,12 +13,13 @@ ConsistentSocket::ConsistentSocket(axon::service::IOService * service):
     base_socket_(service),
     reconnect_timer_(service),
     wait_timer_(service),
+    strand_(Strand::create(service)),
     should_connect_(false),
     status_(0) {
 
     port_ = 0;
     init_coros();
-    pthread_mutex_init(&mutex_, NULL);
+    LOG_DEBUG("create consistent socket %p", this);
 }
 
 ConsistentSocket::ConsistentSocket(axon::service::IOService * service, const std::string& addr, uint32_t port): ConsistentSocket(service) {
@@ -28,10 +30,11 @@ ConsistentSocket::ConsistentSocket(axon::service::IOService * service, const std
 }
 
 void ConsistentSocket::start_connecting() {
-    axon::util::ScopedLock lock(&mutex_);
-    if (!(status_ & SOCKET_CONNECTING)) {
-        connect_coro_();
-    }
+    strand_->dispatch([this]() {
+        if (!(status_ & SOCKET_CONNECTING)) {
+            connect_coro_();
+        }
+    });
 }
 
 
@@ -48,7 +51,7 @@ void ConsistentSocket::connect_loop() {
         base_socket_.async_connect(addr_, port_, safe_callback([&connect_ec, this](const ErrorCode& ec, size_t bt) {
             connect_ec = ec;
             connect_coro_();
-        }));
+        }), strand_);
         connect_coro_.yield();
         
         assert(connect_ec != -1);
@@ -62,11 +65,10 @@ void ConsistentSocket::connect_loop() {
                 LOG_INFO("reconnect in 1000 ms");
                 reconnect_timer_.expires_from_now(1000);
                 Ptr ptr = shared_from_this();
-                reconnect_timer_.async_wait([this, ptr](const ErrorCode& ec) {
+                reconnect_timer_.async_wait(strand_->wrap(std::function<void(const ErrorCode&)>([this, ptr](const ErrorCode& ec) {
                     Ptr _ref __attribute__((unused)) = ptr;
-                    axon::util::ScopedLock lock(&mutex_);
                     connect_coro_(); 
-                });
+                })));
                 ptr.reset();
                 connect_coro_.yield();
                 // start next connect
@@ -83,12 +85,11 @@ void ConsistentSocket::connect_loop() {
             wait_timer_.expires_from_now(10);
             axon::util::ErrorCode wait_ec = -1;
             Ptr ptr = shared_from_this();
-            wait_timer_.async_wait([this, &wait_ec, ptr](const axon::util::ErrorCode& ec) {
+            wait_timer_.async_wait(strand_->wrap(std::function<void(const axon::util::ErrorCode&)>([this, &wait_ec, ptr](const axon::util::ErrorCode& ec) {
                 Ptr _ref __attribute__((unused)) = ptr;
-                axon::util::ScopedLock lock(&mutex_);
                 wait_ec = ec;
                 connect_coro_();
-            });
+            })));
             ptr.reset();
             connect_coro_.yield();
             assert(wait_ec != -1);
@@ -103,8 +104,8 @@ void ConsistentSocket::connect_loop() {
 
 
         LOG_INFO("connected to %s:%d", addr_.c_str(), port_);
-        io_service_->post(wrap(read_coro_, SOCKET_READING | SOCKET_DOWN));
-        io_service_->post(wrap(write_coro_, SOCKET_WRITING | SOCKET_DOWN));
+        strand_->post(wrap(read_coro_, SOCKET_READING | SOCKET_DOWN));
+        strand_->post(wrap(write_coro_, SOCKET_WRITING | SOCKET_DOWN));
 
         connect_coro_.yield();
     }
@@ -131,7 +132,7 @@ void ConsistentSocket::read_loop() {
         //    read_coro_();
         //}));
         
-        base_socket_.async_recv_all(buffer, std::bind(&ConsistentSocket::safe_callback_quick, this, shared_from_this(), &read_coro_, std::ref(header_ec), std::placeholders::_1, std::placeholders::_2));
+        base_socket_.async_recv_all(buffer, std::bind(&ConsistentSocket::safe_callback_quick, this, shared_from_this(), &read_coro_, std::ref(header_ec), std::placeholders::_1, std::placeholders::_2), strand_);
         read_coro_.yield();
 
         if (header_ec.code() == -1) {
@@ -155,7 +156,7 @@ void ConsistentSocket::read_loop() {
         // read message body
         buffer.prepare(header->content_length);
         axon::util::ErrorCode body_ec = -1;
-        base_socket_.async_recv_all(buffer, std::bind(&ConsistentSocket::safe_callback_quick, this, shared_from_this(), &read_coro_, std::ref(body_ec), std::placeholders::_1, std::placeholders::_2));
+        base_socket_.async_recv_all(buffer, std::bind(&ConsistentSocket::safe_callback_quick, this, shared_from_this(), &read_coro_, std::ref(body_ec), std::placeholders::_1, std::placeholders::_2), strand_);
         /*
         base_socket_.async_recv_all(buffer, safe_callback([this, &body_ec](const ErrorCode& ec, size_t bt) {
             body_ec = ec;
@@ -199,7 +200,7 @@ void ConsistentSocket::write_loop() {
         send_buffer_.accept(message.length());
 
         ErrorCode send_ec = -1;
-        base_socket_.async_send_all(send_buffer_, std::bind(&ConsistentSocket::safe_callback_quick, this, shared_from_this(), &write_coro_, std::ref(send_ec), std::placeholders::_1, std::placeholders::_2));
+        base_socket_.async_send_all(send_buffer_, std::bind(&ConsistentSocket::safe_callback_quick, this, shared_from_this(), &write_coro_, std::ref(send_ec), std::placeholders::_1, std::placeholders::_2), strand_);
         /*
         base_socket_.async_send_all(send_buffer_, safe_callback([this, &send_ec](const ErrorCode& ec, size_t bt) {
             send_ec = ec;
@@ -231,7 +232,10 @@ void ConsistentSocket::init_coros() {
 
 
 void ConsistentSocket::async_recv(axon::socket::Message& msg, CallBack callback) {
-    axon::util::ScopedLock lock(&mutex_);
+    strand_->dispatch(std::bind(&ConsistentSocket::async_recv_impl, shared_from_this(), std::ref(msg), callback));
+}
+
+void ConsistentSocket::async_recv_impl(axon::socket::Message& msg, CallBack callback) {
     if (status_ & SOCKET_DOWN) {
         io_service_->post(std::bind(callback,SocketResult::DOWN));
     } else if (queue_full(read_queue_)) {
@@ -245,7 +249,10 @@ void ConsistentSocket::async_recv(axon::socket::Message& msg, CallBack callback)
 }
 
 void ConsistentSocket::async_send(axon::socket::Message& msg, CallBack callback) {
-    axon::util::ScopedLock lock(&mutex_);
+    strand_->dispatch(std::bind(&ConsistentSocket::async_send_impl, shared_from_this(), msg, callback));
+}
+
+void ConsistentSocket::async_send_impl(axon::socket::Message& msg, CallBack callback) {
     if (status_ & SOCKET_DOWN) {
         io_service_->post(std::bind(callback,SocketResult::DOWN));
     } else if (queue_full(write_queue_)) {
@@ -259,7 +266,9 @@ void ConsistentSocket::async_send(axon::socket::Message& msg, CallBack callback)
 }
 
 void ConsistentSocket::shutdown() {
-    axon::util::ScopedLock lock(&mutex_);
+    strand_->dispatch(std::bind(&ConsistentSocket::shutdown_impl, shared_from_this()));
+}
+void ConsistentSocket::shutdown_impl() {
     // already shutdown
     if (status_ & SOCKET_DOWN) {
         return;
@@ -276,7 +285,7 @@ void ConsistentSocket::shutdown() {
         io_service_->post(std::bind(write_queue_.front().callback, SocketResult::CANCELED));
         write_queue_.pop();
     }
-    LOG_DEBUG("Consistent socket shutting down with status %d", int(status_));
+    LOG_DEBUG("Consistent socket %p shutting down with status %d", this, int(status_));
     base_socket_.shutdown();
     if (!(status_ & SOCKET_CONNECTING)) {
         connect_coro_();
@@ -290,5 +299,5 @@ void ConsistentSocket::shutdown() {
 }
 
 ConsistentSocket::~ConsistentSocket() {
-    pthread_mutex_destroy(&mutex_);
+    LOG_DEBUG("removed ConsistentSocket address %p", this);
 }

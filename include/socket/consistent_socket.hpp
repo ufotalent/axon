@@ -127,10 +127,8 @@ private:
         }
         // otherwise, try reconnection
         if (should_connect_ && !(status_ & SOCKET_CONNECTING)) {
-            LOG_INFO("do reconnection");
             connect_coro_();
         } else {
-            LOG_INFO("not reconnecting for should_connect_ %d status %d", should_connect_, status_);
         }
 
     }

@@ -79,7 +79,6 @@ void ConsistentSocket::connect_loop() {
 
         // by this time the connection is done, however operation callbacks (may be cancelled), which continues coros,  may still be on fly, we must wait until read/write operation finish.
         while ((status_ & SOCKET_WRITING) || (status_ & SOCKET_READING)) {
-            LOG_INFO("still writting/reading, wait");
             wait_timer_.expires_from_now(10);
             axon::util::ErrorCode wait_ec = -1;
             Ptr ptr = shared_from_this();
@@ -108,7 +107,6 @@ void ConsistentSocket::connect_loop() {
 
         connect_coro_.yield();
     }
-    LOG_DEBUG("connect loop exiting");
 }
 
 void ConsistentSocket::read_loop() {
@@ -178,7 +176,6 @@ void ConsistentSocket::read_loop() {
         io_service_->post(std::bind(op.callback, SocketResult::SUCCESS));
         read_queue_.pop();
     }
-    LOG_DEBUG("read loop exiting");
 }
 
 void ConsistentSocket::write_loop() {
@@ -220,7 +217,6 @@ void ConsistentSocket::write_loop() {
         io_service_->post(std::bind(op.callback, SocketResult::SUCCESS));
         write_queue_.pop();
     }
-    LOG_DEBUG("write loop exiting");
 }
 
 void ConsistentSocket::init_coros() {
@@ -276,7 +272,6 @@ void ConsistentSocket::shutdown() {
         io_service_->post(std::bind(write_queue_.front().callback, SocketResult::CANCELED));
         write_queue_.pop();
     }
-    LOG_DEBUG("Consistent socket shutting down with status %d", int(status_));
     base_socket_.shutdown();
     if (!(status_ & SOCKET_CONNECTING)) {
         connect_coro_();

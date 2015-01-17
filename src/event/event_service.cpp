@@ -126,7 +126,7 @@ void EventService::run_loop() {
         epoll_event evs[128];
         int cnt = epoll_wait(epoll_fd_, evs, 128, -1);
         if (cnt < 0) {
-            perror("poll failed");
+            // perror("poll failed");
         }
         for (int i = 0; i < cnt; i++) {
             if (evs[i].data.ptr == &interrupt_fd_) {

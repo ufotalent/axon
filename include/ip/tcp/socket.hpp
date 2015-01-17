@@ -31,7 +31,7 @@ public:
                 fd_, 
                 axon::event::Event::EVENT_TYPE_READ,
                 buf,
-                callback));
+                std::move(callback)));
         ev_service_->start_event(ev, fd_ev_);
     }
 
@@ -45,14 +45,14 @@ public:
                 fd_, 
                 axon::event::Event::EVENT_TYPE_READ,
                 buf,
-                callback,
+                std::move(callback),
                 condition));
         ev_service_->start_event(ev, fd_ev_);
     }
 
     template <class Buffer>
     void async_recv_all(Buffer& buf, CallBack callback) {
-        async_recv_until(buf, callback, axon::util::AtLeast(buf.write_size()));
+        async_recv_until(buf, std::move(callback), axon::util::AtLeast(buf.write_size()));
     }
 
     template <class Buffer>
@@ -63,7 +63,7 @@ public:
         }
         typename axon::event::SendEvent<Buffer>::Ptr ev(new axon::event::SendEvent<Buffer>(
                 fd_, 
-                axon::event::Event::EVENT_TYPE_WRITE, buf, callback));
+                axon::event::Event::EVENT_TYPE_WRITE, buf, std::move(callback)));
         ev_service_->start_event(ev, fd_ev_);
     }
 
@@ -77,14 +77,14 @@ public:
                 fd_, 
                 axon::event::Event::EVENT_TYPE_WRITE,
                 buf,
-                callback,
+                std::move(callback),
                 condition));
         ev_service_->start_event(ev, fd_ev_);
     }
 
     template <class Buffer>
     void async_send_all(Buffer& buf, CallBack callback) {
-        async_send_until(buf, callback, axon::util::AtLeast(buf.read_size()));
+        async_send_until(buf, std::move(callback), axon::util::AtLeast(buf.read_size()));
     }
 
     void connect(std::string remote_addr, uint32_t port);

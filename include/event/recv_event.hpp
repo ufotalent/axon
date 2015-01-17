@@ -13,7 +13,7 @@ class RecvEvent: public Event {
 public:
     typedef std::function<void(const axon::util::ErrorCode&, size_t)> CallBack;
 
-    RecvEvent(int fd, int type, BufferType &buffer, CallBack callback): Event(fd, type), buffer_(buffer), callback_(callback) {
+    RecvEvent(int fd, int type, BufferType &buffer, CallBack callback): Event(fd, type), buffer_(buffer), callback_(std::move(callback)) {
         bytes_transfered_ = 0;
     }
 

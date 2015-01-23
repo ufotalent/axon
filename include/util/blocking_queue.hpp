@@ -1,9 +1,11 @@
 #pragma once
 #include <pthread.h>
+#include <semaphore.h>
 #include <queue>
 #include <atomic>
 #include <cstdlib>
 #include "lock.hpp"
+#include "util/log.hpp"
 
 namespace axon {
 namespace util {
@@ -20,24 +22,28 @@ public:
    
     BlockingQueue():closed_(false) {
         pthread_mutex_init(&queue_mutex_, NULL);
-        pthread_cond_init(&queue_cond_, NULL);
+        sem_init(&sem_, 0, 0);
         count_ = 0;
     }
     void push_back(T& data) {
         if (closed_)
             return;
-        ScopedLock lock(&queue_mutex_);
-        base_queue_.push(std::move(data));
+        {
+            ScopedLock lock(&queue_mutex_);
+            base_queue_.push(std::move(data));
+        }
         count_++;
-        pthread_cond_signal(&queue_cond_);
+        sem_post(&sem_);
     }
     void push_back(T&& data) {
         if (closed_)
             return;
-        ScopedLock lock(&queue_mutex_);
+        {
+            ScopedLock lock(&queue_mutex_);
+            base_queue_.push(std::move(data));
+        }
         count_++;
-        base_queue_.push(std::move(data));
-        pthread_cond_signal(&queue_cond_);
+        sem_post(&sem_);
     }
 
     BlockingQueueReturnStatus try_pop_front(T& data) {
@@ -55,19 +61,14 @@ public:
     }
 
     BlockingQueueReturnStatus pop_front(T& data) {
-        ScopedLock lock(&queue_mutex_);
         if (closed_)
             return BlockingQueueClosed;
+        sem_wait(&sem_);
+        ScopedLock lock(&queue_mutex_);
         if (base_queue_.empty()) {
-            if (!closed_) {
-                pthread_cond_wait(&queue_cond_, &queue_mutex_);
-            } 
-            // Another if because the closed_ variable may be changed by close()
             if (closed_) {
                 return BlockingQueueClosed;
-            }
-            // If the queue is still empty, return interupted
-            if (base_queue_.empty()) {
+            } else {
                 return BlockingQueueInterupted;
             }
         }
@@ -79,13 +80,17 @@ public:
     }
 
     void notify_all() {
-        pthread_cond_broadcast(&queue_cond_);
+        for (int i = 0; i < 1000; i++) {
+           sem_post(&sem_);
+        }
     }
 
     void close() {
-        ScopedLock lock(&queue_mutex_);
-        closed_ = true;
-        pthread_cond_broadcast(&queue_cond_);
+        {
+            ScopedLock lock(&queue_mutex_);
+            closed_ = true;
+        }
+        notify_all();
     }
 
     bool empty() {
@@ -97,13 +102,13 @@ public:
     virtual ~BlockingQueue() {
         close();
         pthread_mutex_destroy(&queue_mutex_);
-        pthread_cond_destroy(&queue_cond_);
+        sem_destroy(&sem_);
     }
 private:
     std::queue<T> base_queue_;
-    pthread_cond_t queue_cond_;
     pthread_mutex_t queue_mutex_;
-    volatile bool closed_;
+    sem_t sem_;
+    std::atomic_bool closed_;
     std::atomic_int count_;
     
 };

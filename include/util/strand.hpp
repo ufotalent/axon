@@ -139,9 +139,10 @@ public:
     }
 
     template <class ...Args>
-    std::function<void(Args...)> wrap(std::function<void(Args...)> &&f) {
-        return [f, this](Args... args) {
-            dispatch(std::bind(f, args...));
+    std::function<void(Args...)> wrap(std::function<void(Args...)> f) {
+        Ptr ptr = shared_from_this();
+        return [f, ptr](Args... args) {
+            ptr->dispatch(std::bind(f, args...));
         };
     }
 private:

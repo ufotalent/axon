@@ -4,6 +4,7 @@
 #include <atomic>
 #include <functional>
 #include <stack>
+#include <memory>
 #include "util/lock.hpp"
 #include "util/log.hpp"
 #include "service/io_service.hpp"
@@ -11,7 +12,7 @@
 namespace axon {
 namespace util {
 
-class Strand {
+class Strand: public std::enable_shared_from_this<Strand> {
     template <typename T>
     class LockFreeQueue{
     public:
@@ -82,11 +83,16 @@ class Strand {
             perform();
         }
     }
-public:
     Strand(axon::service::IOService* io_service): io_service_(io_service) {
         has_pending_tests_ = false;
         pthread_rwlock_init(&rwlock_, NULL);
     }
+public:
+    typedef std::shared_ptr<Strand> Ptr;
+    static Ptr create(axon::service::IOService* service) {
+        return Ptr(new Strand(service));
+    }
+
     virtual ~Strand() {
         pthread_rwlock_destroy(&rwlock_);
     }
@@ -127,7 +133,7 @@ public:
         bool should_post = !has_pending_tests_;
         pthread_rwlock_unlock(&rwlock_);
         if (should_post) {
-            io_service_->post(std::bind(&Strand::do_dispatch, this));
+            io_service_->post(std::bind(&Strand::do_dispatch, shared_from_this()));
         }
         
     }

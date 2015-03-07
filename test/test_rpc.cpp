@@ -49,11 +49,11 @@ class EchoServer: public axon::rpc::BaseRPCService {
 public:
     EchoServer(IOService* service, std::string addr, uint32_t port): BaseRPCService(service, addr, port) {
     }
-    void dispatch_request(const Message& message, Session::Ptr session) {
-        Message response = message;
-        int data = *((const int*)message.content_ptr());
+    void dispatch_request(Session::Ptr session, Session::Context::Ptr context) {
+        int data = *((const int*)context->request.content_ptr());
         if (data != -1) {
-            session->send_response(response);
+            context->response = context->request;
+            session->send_response(context);
         } else {
             this->shutdown();
         }
@@ -117,8 +117,9 @@ TEST_F(RPCTest, test_single) {
     printf("%d\n", test_port);
     test_count = 1;
     max_success = -1;
-    EchoServer server(&service, "127.0.0.1", test_port);
-    server.bind_and_listen();
+    EchoServer::Ptr server = EchoServer::create<EchoServer>(&service, "127.0.0.1", test_port);
+    server->bind_and_listen();
+    server.reset();
     Thread run_thr(std::bind(&IOService::run, &service));
     Thread client_thr(std::bind(client_thread));
     client_thr.join();
@@ -133,12 +134,12 @@ TEST_F(RPCTest, test_30_client) {
     test_count = 10000;
     min_success = std::numeric_limits<int>::max();
     max_success = -1;
-    EchoServer server(&service, "127.0.0.1", test_port);
-    service.add_work();
-    server.bind_and_listen();
+    EchoServer::Ptr server = EchoServer::create<EchoServer>(&service, "127.0.0.1", test_port);
+    server->bind_and_listen();
+    server.reset();
     Thread* run_thrs[12];
     for (int i = 0; i < 12; i++) {
-        run_thrs[i] = new Thread(std::bind(&IOService::run, &service));
+        run_thrs[i] = new Thread([&service](){service.run(); LOG_DEBUG("run thread exiting");});
     }
 
     Thread* client_thrs[30];
@@ -150,7 +151,6 @@ TEST_F(RPCTest, test_30_client) {
         delete client_thrs[i];
     }
     stop_server();
-    service.remove_work();
     for (int i = 0; i < 12; i++) {
         run_thrs[i]->join();
         delete run_thrs[i];
@@ -165,12 +165,11 @@ TEST_F(RPCTest, test_30_client_shutdown_halfway) {
     test_count = 10000;
     min_success = std::numeric_limits<int>::max();
     max_success = -1;
-    EchoServer server(&service, "127.0.0.1", test_port);
-    service.add_work();
-    server.bind_and_listen();
+    EchoServer::Ptr server = EchoServer::create<EchoServer>(&service, "127.0.0.1", test_port);
+    server->bind_and_listen();
     Thread* run_thrs[12];
     for (int i = 0; i < 12; i++) {
-        run_thrs[i] = new Thread(std::bind(&IOService::run, &service));
+        run_thrs[i] = new Thread([&service](){service.run(); LOG_DEBUG("run thread exiting");});
     }
 
     Thread* client_thrs[30];
@@ -178,15 +177,21 @@ TEST_F(RPCTest, test_30_client_shutdown_halfway) {
         client_thrs[i] = new Thread(std::bind(client_thread));
     }
     sleep(1);
-    stop_server();
+    server->shutdown();
+    server.reset();
     for (int i = 0; i < 30; i++) {
         client_thrs[i]->join();
         delete client_thrs[i];
     }
-    service.remove_work();
     for (int i = 0; i < 12; i++) {
         run_thrs[i]->join();
         delete run_thrs[i];
     }
     LOG_INFO("min %d max %d", min_success, max_success);
+}
+
+TEST_F(RPCTest, server_bad_init) {
+    IOService service;
+    EchoServer server(&service, "127.0.0.1", test_port);
+    EXPECT_THROW(server.bind_and_listen(), std::bad_weak_ptr);
 }

@@ -244,11 +244,11 @@ void ConsistentSocket::async_recv_impl(axon::socket::Message& msg, CallBack call
     }
 }
 
-void ConsistentSocket::async_send(axon::socket::Message& msg, CallBack callback) {
+void ConsistentSocket::async_send(axon::socket::Message msg, CallBack callback) {
     strand_->dispatch(std::bind(&ConsistentSocket::async_send_impl, shared_from_this(), msg, callback));
 }
 
-void ConsistentSocket::async_send_impl(axon::socket::Message& msg, CallBack callback) {
+void ConsistentSocket::async_send_impl(axon::socket::Message msg, CallBack callback) {
     if (status_ & SOCKET_DOWN) {
         io_service_->post(std::bind(callback,SocketResult::DOWN));
     } else if (queue_full(write_queue_)) {

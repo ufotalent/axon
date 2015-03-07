@@ -38,8 +38,8 @@ public:
     typedef std::shared_ptr<ConsistentSocket> Ptr;
     void async_recv(axon::socket::Message& message, CallBack callback);
     void async_recv_impl(axon::socket::Message& message, CallBack callback);
-    void async_send(axon::socket::Message& message, CallBack callback);
-    void async_send_impl(axon::socket::Message& message, CallBack callback);
+    void async_send(axon::socket::Message message, CallBack callback);
+    void async_send_impl(axon::socket::Message message, CallBack callback);
     void shutdown();
     void shutdown_impl();
     void start_connecting();

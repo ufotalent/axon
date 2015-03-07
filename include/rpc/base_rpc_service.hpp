@@ -10,7 +10,7 @@
 
 namespace axon {
 namespace rpc {
-class BaseRPCService {
+class BaseRPCService: public std::enable_shared_from_this<BaseRPCService> {
 private:
     axon::service::IOService *io_service_;
     axon::ip::tcp::Acceptor acceptor_;
@@ -22,10 +22,17 @@ private:
     uint32_t port_;
     bool shutdown_;
     void event_loop();
-public:
+
+protected:
     BaseRPCService(axon::service::IOService* service, const std::string& addr, uint32_t port);
+public:
+    typedef std::shared_ptr<BaseRPCService> Ptr;
+    template <class T>
+    static Ptr create(axon::service::IOService* service, const std::string& addr, uint32_t port) {
+        return Ptr(new T(service, addr, port));
+    }
     virtual ~BaseRPCService();
-    virtual void dispatch_request(const axon::socket::Message& message, Session::Ptr session);
+    virtual void dispatch_request(Session::Ptr session, Session::Context::Ptr context);
     void remove_session(Session::Ptr session);
     void bind_and_listen();
     void shutdown();

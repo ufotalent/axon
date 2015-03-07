@@ -18,17 +18,24 @@ BaseRPCService::BaseRPCService(IOService* service, const std::string& addr, uint
 void BaseRPCService::bind_and_listen() {
     acceptor_.bind(addr_, port_);
     acceptor_.listen();
-    io_service_->post(std::bind(&BaseRPCService::lock_continue, this));
+    try {
+        io_service_->post(std::bind(&BaseRPCService::lock_continue, shared_from_this()));
+    } catch (std::bad_weak_ptr& e) {
+        LOG_FATAL("BaseRPCService and its base class must be created using BaseRPCService::create");
+        throw;
+    }
 }
 
 void BaseRPCService::event_loop() {
     while (!shutdown_) {
-        Session::Ptr new_session = Session::Ptr(new Session(io_service_, this));
+        Session::Ptr new_session = Session::Ptr(new Session(io_service_, shared_from_this()));
         axon::util::ErrorCode accept_ec;
-        acceptor_.async_accept(new_session->socket_->base_socket(), [this, &accept_ec](const axon::util::ErrorCode& ec) {
+        Ptr ptr = shared_from_this();
+        acceptor_.async_accept(new_session->socket_->base_socket(), [ptr, &accept_ec](const axon::util::ErrorCode& ec) {
             accept_ec = ec;
-            lock_continue();
+            ptr->lock_continue();
         });
+        ptr.reset();
         accept_coro_.yield();
 
         if (shutdown_) {
@@ -68,6 +75,6 @@ void BaseRPCService::remove_session(Session::Ptr session) {
     session_set_.erase(session);
 }
 
-void BaseRPCService::dispatch_request(const axon::socket::Message& message, Session::Ptr session) {
-    LOG_INFO("request message content length %d", message.content_length());
+void BaseRPCService::dispatch_request(Session::Ptr session, Session::Context::Ptr context) {
+    LOG_INFO("request message content length %d", context->request.content_length());
 }

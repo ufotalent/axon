@@ -45,11 +45,11 @@ class EchoServer: public axon::rpc::BaseRPCService {
 public:
     EchoServer(IOService* service, std::string addr, uint32_t port): BaseRPCService(service, addr, port) {
     }
-    void dispatch_request(const Message& message, Session::Ptr session) {
-        Message response = message;
-        int data = *((const int*)message.content_ptr());
+    void dispatch_request(Session::Ptr session, Session::Context::Ptr context) {
+        int data = *((const int*)context->request.content_ptr());
         if (data != -1) {
-            session->send_response(response);
+            context->response = context->request;
+            session->send_response(context);
         } else {
             this->shutdown();
         }
@@ -163,8 +163,8 @@ TEST_F(BenchmarkTest, ioservice) {
 TEST_F(BenchmarkTest, rpc_1_client) {
     test_count = 1000000;
     IOService service;
-    EchoServer server(&service, "127.0.0.1", test_port);
-    server.bind_and_listen();
+    EchoServer::Ptr server = EchoServer::create<EchoServer>(&service, "127.0.0.1", test_port);
+    server->bind_and_listen();
     Thread run_thr(std::bind(&IOService::run, &service));
     Thread client_thr(client_thread);
     client_thr.join();
@@ -178,8 +178,8 @@ TEST_F(BenchmarkTest, rpc_4_client) {
     response_count = 0;
     const int nt = 4;
     IOService service;
-    EchoServer server(&service, "127.0.0.1", test_port);
-    server.bind_and_listen();
+    EchoServer::Ptr server = EchoServer::create<EchoServer>(&service, "127.0.0.1", test_port);
+    server->bind_and_listen();
     Thread run_thr(std::bind(&IOService::run, &service));
     Thread *client_thrs[nt];
     for (int i = 0; i < nt; i++) {
@@ -194,14 +194,14 @@ TEST_F(BenchmarkTest, rpc_4_client) {
     EXPECT_EQ(response_count, test_count * nt);
 }
 
-TEST_F(BenchmarkTest, rpc_4_client_server_12thr) {
+TEST_F(BenchmarkTest, rpc_4_client_server_4thr) {
     test_count = 1000000;
     response_count = 0;
     const int nt = 4;
-    const int rt = 12;
+    const int rt = 4;
     IOService service;
-    EchoServer server(&service, "127.0.0.1", test_port);
-    server.bind_and_listen();
+    EchoServer::Ptr server = EchoServer::create<EchoServer>(&service, "127.0.0.1", test_port);
+    server->bind_and_listen();
     Thread* run_thrs[rt];
     for (int i = 0; i < rt; i++) {
         run_thrs[i] = new Thread(std::bind(&IOService::run, &service));

@@ -5,7 +5,7 @@ using namespace axon::rpc;
 using namespace axon::service;
 using namespace axon::socket;
 
-Session::Session(axon::service::IOService* service, BaseRPCService* rpc) {
+Session::Session(axon::service::IOService* service, std::shared_ptr<BaseRPCService> rpc) {
     socket_ = ConsistentSocket::create(service);
     io_service_ = service;
     rpc_service_ = rpc;
@@ -27,9 +27,9 @@ void Session::start_event_loop() {
 
 void Session::event_loop() {
     while (!shutdown_) {
-        Message message;
+        Context::Ptr context(new Context());
         ConsistentSocket::SocketResult recv_result;
-        socket_->async_recv(message, std::bind(&Session::safe_callback_quick, this, shared_from_this(), &recv_coro_, std::ref(recv_result), std::placeholders::_1));
+        socket_->async_recv(context->request, std::bind(&Session::safe_callback_quick, this, shared_from_this(), &recv_coro_, std::ref(recv_result), std::placeholders::_1));
         /*
         socket_->async_recv(message, safe_callback([this, &recv_result](const ConsistentSocket::SocketResult& sr) {
             recv_result = sr;
@@ -43,22 +43,23 @@ void Session::event_loop() {
             return;
         }
         if (recv_result == ConsistentSocket::SocketResult::SUCCESS) {
-            io_service_->post(std::bind(&Session::dispatch_request, shared_from_this(), message));
+            io_service_->post(std::bind(&Session::dispatch_request, shared_from_this(), context));
         } else {
             // recv failed, abort this session
             // post this operation to avoid deadlock
-            io_service_->post(std::bind(&BaseRPCService::remove_session, this->rpc_service_, shared_from_this()));
+            io_service_->post(std::bind(&BaseRPCService::remove_session, rpc_service_, shared_from_this()));
             return;
         }
     }
 }
 
-void Session::dispatch_request(const axon::socket::Message& message) {
-    rpc_service_->dispatch_request(message, shared_from_this());
+void Session::dispatch_request(Context::Ptr context) {
+    rpc_service_->dispatch_request(shared_from_this(), context);
 }
 
-void Session::send_response(axon::socket::Message& message) {
-    socket_->async_send(message, [](const ConsistentSocket::SocketResult& sr){
+void Session::send_response(Context::Ptr context) {
+    context->response.header()->token = context->request.header()->token;
+    socket_->async_send(context->response, [](const ConsistentSocket::SocketResult& sr){
         if (sr != ConsistentSocket::SocketResult::SUCCESS) {
             LOG_INFO("send response failed %d", (int)sr);
         } else {

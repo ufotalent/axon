@@ -6,21 +6,28 @@
 
 namespace axon {
 namespace rpc {
+
 class BaseRPCService;
 class Session: public std::enable_shared_from_this<Session> {
 public:
-    Session(axon::service::IOService* service, BaseRPCService *rpc);
+    struct Context {
+        typedef std::shared_ptr<Context> Ptr;
+        axon::socket::Message request;
+        axon::socket::Message response;
+    };
+
+    Session(axon::service::IOService* service, std::shared_ptr<BaseRPCService> rpc);
     virtual ~Session();
     typedef std::shared_ptr<Session> Ptr;
     void start_event_loop();
-    void send_response(axon::socket::Message& message);
+    void send_response(Context::Ptr context);
 protected:
-    void dispatch_request(const axon::socket::Message& message);
+    void dispatch_request(Context::Ptr context);
 private:
     void shutdown();
     axon::socket::ConsistentSocket::Ptr socket_;
     axon::service::IOService *io_service_;
-    BaseRPCService* rpc_service_;
+    std::shared_ptr<BaseRPCService> rpc_service_;
     axon::util::Coroutine recv_coro_;
     pthread_mutex_t mutex_;
     bool shutdown_ = false;

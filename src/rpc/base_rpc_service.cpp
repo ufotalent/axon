@@ -75,6 +75,6 @@ void BaseRPCService::remove_session(Session::Ptr session) {
     session_set_.erase(session);
 }
 
-void BaseRPCService::dispatch_request(Session::Ptr session, Session::Context::Ptr context) {
+void BaseRPCService::dispatch_request(Session::Ptr session, Context::Ptr context) {
     LOG_INFO("request message content length %d", context->request.content_length());
 }

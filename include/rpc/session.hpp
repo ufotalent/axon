@@ -8,13 +8,15 @@ namespace axon {
 namespace rpc {
 
 class BaseRPCService;
+
+struct Context {
+    typedef std::shared_ptr<Context> Ptr;
+    axon::socket::Message request;
+    axon::socket::Message response;
+};
+
 class Session: public std::enable_shared_from_this<Session> {
 public:
-    struct Context {
-        typedef std::shared_ptr<Context> Ptr;
-        axon::socket::Message request;
-        axon::socket::Message response;
-    };
 
     Session(axon::service::IOService* service, std::shared_ptr<BaseRPCService> rpc);
     virtual ~Session();

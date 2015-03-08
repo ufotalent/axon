@@ -80,9 +80,7 @@ public:
     }
 
     void notify_all() {
-        for (int i = 0; i < 1000; i++) {
-           sem_post(&sem_);
-        }
+        sem_post(&sem_);
     }
 
     void close() {
@@ -90,7 +88,9 @@ public:
             ScopedLock lock(&queue_mutex_);
             closed_ = true;
         }
-        notify_all();
+        for (int i = 0; i < 1000; i++) {
+            notify_all();
+        }
     }
 
     bool empty() {

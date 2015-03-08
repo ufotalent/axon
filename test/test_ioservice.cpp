@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 #include <pthread.h>
 #include "service/io_service.hpp"
+#include "util/thread.hpp"
 #include <unistd.h>
 #include "util/util.hpp"
 

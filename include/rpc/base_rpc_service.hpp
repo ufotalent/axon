@@ -32,7 +32,7 @@ public:
         return Ptr(new T(service, addr, port));
     }
     virtual ~BaseRPCService();
-    virtual void dispatch_request(Session::Ptr session, Session::Context::Ptr context);
+    virtual void dispatch_request(Session::Ptr session, Context::Ptr context);
     void remove_session(Session::Ptr session);
     void bind_and_listen();
     void shutdown();

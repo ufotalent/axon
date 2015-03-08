@@ -17,6 +17,7 @@
 #include "util/thread.hpp"
 #include "util/test_util.hpp"
 #include "rpc/base_rpc_service.hpp"
+#include "rpc/base_rpc_client.hpp"
 #include <stdexcept>
 
 using namespace axon::service;
@@ -49,7 +50,7 @@ class EchoServer: public axon::rpc::BaseRPCService {
 public:
     EchoServer(IOService* service, std::string addr, uint32_t port): BaseRPCService(service, addr, port) {
     }
-    void dispatch_request(Session::Ptr session, Session::Context::Ptr context) {
+    void dispatch_request(Session::Ptr session, Context::Ptr context) {
         int data = *((const int*)context->request.content_ptr());
         if (data != -1) {
             context->response = context->request;
@@ -195,3 +196,124 @@ TEST_F(RPCTest, server_bad_init) {
     EchoServer server(&service, "127.0.0.1", test_port);
     EXPECT_THROW(server.bind_and_listen(), std::bad_weak_ptr);
 }
+
+TEST_F(RPCTest, base_rpcclient) {
+    IOService service;
+    EchoServer::Ptr server = EchoServer::create<EchoServer>(&service, "127.0.0.1", test_port);
+    server->bind_and_listen();
+    BaseRPCClient::Ptr client = BaseRPCClient::create<BaseRPCClient>(&service, "127.0.0.1", test_port);
+
+    bool done = false;
+    Context::Ptr context(new Context());
+    context->request.set_size(sizeof(int));
+    *(reinterpret_cast<int*>(context->request.content_ptr())) = 0x01020304;
+    LOG_DEBUG("%p", context.get());
+    client->async_request(context, [client, context, &done](const BaseRPCClient::ClientResult& cr) {
+        EXPECT_EQ((int)cr, BaseRPCClient::ClientResult::SUCCESS);
+        LOG_DEBUG("%p", context.get());
+        EXPECT_EQ(context->response.content_length(), sizeof(int));
+        int c = *(reinterpret_cast<const int*>(context->response.content_ptr()));
+        EXPECT_EQ(c, 0x01020304);
+        done = true;
+        stop_server();
+        client->shutdown();
+    });
+    service.run();
+    EXPECT_EQ(done, true);
+}
+
+
+namespace {
+    std::atomic_int success_count;
+    std::atomic_int done_count;
+}
+void rpc_client_thread(IOService* service, bool shutdown) {
+    BaseRPCClient::Ptr client = BaseRPCClient::create<BaseRPCClient>(service, "127.0.0.1", test_port);
+    std::shared_ptr<std::atomic_int> local_count (new std::atomic_int());
+    local_count->store(0);
+    for (int i = 0; i < 100000; i++) {
+        Context::Ptr context(new Context());
+        context->request.set_size(sizeof(int));
+        int req = rand();
+        *(reinterpret_cast<int*>(context->request.content_ptr())) = req;
+        client->async_request(context, [shutdown, local_count, client, context, req](const BaseRPCClient::ClientResult& cr) {
+            if (cr == BaseRPCClient::ClientResult::SUCCESS) {
+                EXPECT_EQ((int)cr, BaseRPCClient::ClientResult::SUCCESS);
+                EXPECT_EQ(context->response.content_length(), sizeof(int));
+                int c = *(reinterpret_cast<const int*>(context->response.content_ptr()));
+                EXPECT_EQ(c, req);
+                success_count++;
+            }
+            done_count++;
+            (*local_count)++;
+            if (local_count->load() % 1000 == 0) {
+                LOG_INFO("local count %d done", local_count->load());
+            }
+            if (done_count == 100000 * 4) {
+                stop_server();
+            }
+            if (local_count->load() == 100000 && !shutdown) {
+                client->shutdown();
+            }
+        });
+    }
+    if (shutdown) {
+        sleep(1);
+        client->shutdown();
+    }
+}
+TEST_F(RPCTest, 4thr_4rpcclient) {
+    success_count = 0;
+    done_count = 0;
+    IOService service;
+    EchoServer::Ptr server = EchoServer::create<EchoServer>(&service, "127.0.0.1", test_port);
+    server->bind_and_listen();
+
+    Thread* client_threads[4];
+    for (int i = 0; i < 4; i++) {
+        client_threads[i] = new Thread(std::bind(rpc_client_thread, &service, false));
+    }
+    Thread* run_threads[4];
+    for (int i = 0; i < 4; i++) {
+        run_threads[i] = new Thread(std::bind(&IOService::run, &service));
+    }
+    for (int i = 0; i < 4; i++) {
+        run_threads[i]->join();
+        delete run_threads[i];
+    }
+    for (int i = 0; i < 4; i++) {
+        client_threads[i]->join();
+        delete client_threads[i];
+    }
+    EXPECT_EQ(done_count, 400000);
+    EXPECT_EQ(success_count, 400000);
+}
+
+TEST_F(RPCTest, 4thr_4rpcclient_shutdown) {
+    success_count = 0;
+    done_count = 0;
+    IOService service;
+    EchoServer::Ptr server = EchoServer::create<EchoServer>(&service, "127.0.0.1", test_port);
+    server->bind_and_listen();
+
+    Thread* client_threads[4];
+    for (int i = 0; i < 4; i++) {
+        client_threads[i] = new Thread(std::bind(rpc_client_thread, &service, true));
+    }
+    Thread* run_threads[4];
+    for (int i = 0; i < 4; i++) {
+        run_threads[i] = new Thread(std::bind(&IOService::run, &service));
+    }
+
+    for (int i = 0; i < 4; i++) {
+        run_threads[i]->join();
+        delete run_threads[i];
+    }
+    for (int i = 0; i < 4; i++) {
+        client_threads[i]->join();
+        delete client_threads[i];
+    }
+    EXPECT_EQ(done_count, 400000);
+    LOG_INFO("success_count: %d", success_count.load());
+}
+

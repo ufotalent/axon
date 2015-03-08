@@ -45,7 +45,7 @@ class EchoServer: public axon::rpc::BaseRPCService {
 public:
     EchoServer(IOService* service, std::string addr, uint32_t port): BaseRPCService(service, addr, port) {
     }
-    void dispatch_request(Session::Ptr session, Session::Context::Ptr context) {
+    void dispatch_request(Session::Ptr session, Context::Ptr context) {
         int data = *((const int*)context->request.content_ptr());
         if (data != -1) {
             context->response = context->request;

@@ -1,6 +1,7 @@
 #include "service/io_service.hpp"
 #include <pthread.h>
 #include <unistd.h>
+#include <cassert>
 #include "util/lock.hpp"
 #include "util/log.hpp"
 
@@ -38,7 +39,8 @@ IOService::~IOService() {
 
 void IOService::post(IOService::CallBack handler) {
     job_count_++;
-    handler_queue_.push_back(handler);
+    handler_queue_.push_back(std::move(handler));
+    assert(((bool)handler) == false);
 }
 
 void IOService::poll() {

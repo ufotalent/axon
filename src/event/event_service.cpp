@@ -185,18 +185,22 @@ void EventService::fd_event::perform(uint32_t events) {
                 if (queue.front()->perform()) {
                     axon::service::IOService *service = io_service;
                     Event::Ptr done_ev = queue.front();
+                    queue.pop();
 
-                    auto completion = [done_ev, service]{
+                    std::function<void()> completion = [done_ev, service]{
                         // Exception may be thrown from completion handler, ensure work removed
                         on_exit_remove_work r(service);
                         done_ev->complete();
                     };
-                    if (done_ev->callback_strand()) {
-                        done_ev->callback_strand()->post(std::move(completion));
+                    auto strand = done_ev->callback_strand();
+                    // done_ev must be released before posting, completion object now is the only reference holder
+                    done_ev.reset();
+                    if (strand) {
+                        strand->post(std::move(completion));
                     } else {
                         service->post(std::move(completion));
                     }
-                    queue.pop();
+                    assert(((bool)completion) == false);
                 } else {
                     break;
                 }
@@ -212,18 +216,21 @@ void EventService::fd_event::cancel_all() {
             // post complete without performing
             axon::service::IOService *service = io_service;
             Event::Ptr done_ev = queue.front();
+            queue.pop();
 
             auto completion = [done_ev, service]{
                 // Exception may be thrown from completion handler, ensure work removed
                 on_exit_remove_work r(service);
                 done_ev->complete();
             };
-            if (done_ev->callback_strand()) {
-                done_ev->callback_strand()->post(std::move(completion));
+            auto strand = done_ev->callback_strand();
+            // done_ev must be released before posting, completion object now is the only reference holder
+            done_ev.reset();
+            if (strand) {
+                strand->post(std::move(completion));
             } else {
                 service->post(std::move(completion));
             }
-            queue.pop();
         }
     }
 

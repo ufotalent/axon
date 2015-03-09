@@ -33,7 +33,7 @@ IOService::IOService():stoped_(false) {
 }
 
 IOService::~IOService() {
-    LOG_INFO("IOService handled %d callbacks", job_count_.load());
+    // LOG_INFO("IOService handled %d callbacks", job_count_.load());
     stop();
 }
 

@@ -33,6 +33,7 @@ public:
     };
     void async_request(Context::Ptr context, std::function<void(const ClientResult&)> callback, const double timeout = 20);
     void shutdown();
+    virtual ~BaseRPCClient() = default;
 private:
     void request_sent_callback(uint32_t req_no, const axon::socket::ConsistentSocket::SocketResult&);
     void timer_callback(const axon::util::ErrorCode& ec);

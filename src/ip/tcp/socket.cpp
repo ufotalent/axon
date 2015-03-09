@@ -75,14 +75,11 @@ void Socket::assign(int fd) {
     fd_ev_.reset(new EventService::fd_event(fd_, io_service_));
     ev_service_->register_fd(fd_, fd_ev_);
     is_down_.store(false);
-    LOG_INFO("assigning base socket %p %d", this, is_down_.load());
 }
 
 void Socket::shutdown() {
     bool expected = false;
-    LOG_INFO("socket %p shutting down, now is_down_ = %d", this, is_down_.load());
     if (!is_down_.compare_exchange_strong(expected, true)) {
-        LOG_INFO("not really shutting down");
         return;
     }
     is_down_.store(true);

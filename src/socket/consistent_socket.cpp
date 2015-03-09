@@ -19,7 +19,7 @@ ConsistentSocket::ConsistentSocket(axon::service::IOService * service):
 
     port_ = 0;
     init_coros();
-    LOG_DEBUG("create consistent socket %p", this);
+    // LOG_DEBUG("create consistent socket %p", this);
 }
 
 ConsistentSocket::ConsistentSocket(axon::service::IOService * service, const std::string& addr, uint32_t port): ConsistentSocket(service) {
@@ -139,7 +139,7 @@ void ConsistentSocket::read_loop() {
         assert(header_ec.code() != -1);
         // by this time the socket may be reconnecting or shutdown
         if (!(status_ & SOCKET_READY) || header_ec != ErrorCode::success) {
-            LOG_INFO("failed to get message header");
+            // LOG_INFO("failed to get message header");
             handle_error();
             continue;
         }
@@ -209,7 +209,7 @@ void ConsistentSocket::write_loop() {
         assert(send_ec != -1);
         // by this time the socket may be reconnecting or shutdown
         if (!(status_ & SOCKET_READY) || send_ec!= ErrorCode::success) {
-            LOG_INFO("send failed");
+            // LOG_INFO("send failed");
             handle_error();
             continue;
         }
@@ -294,5 +294,5 @@ void ConsistentSocket::shutdown_impl() {
 }
 
 ConsistentSocket::~ConsistentSocket() {
-    LOG_DEBUG("removed ConsistentSocket address %p", this);
+    // LOG_DEBUG("removed ConsistentSocket address %p", this);
 }

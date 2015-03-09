@@ -122,7 +122,7 @@ private:
         status_ &= ~SOCKET_READY;
         // if this socket is not connecting to anyone, just shut it down
         if (!should_connect_ && !(status_ & SOCKET_DOWN)) {
-            LOG_INFO("recv/write failed, shutting down connection");
+            // LOG_INFO("recv/write failed, shutting down connection");
             strand_->post(std::bind(&ConsistentSocket::shutdown_impl, shared_from_this()));
         }
         // otherwise, try reconnection

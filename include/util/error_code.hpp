@@ -1,5 +1,5 @@
 #pragma once
-
+#include <string>
 namespace axon {
 namespace util {
 
@@ -37,6 +37,29 @@ public:
 
     int code() const {
         return code_;
+    }
+
+    const char* str() const {
+        const int CODE_NUM = 12;
+        const static char* strs[CODE_NUM] = {
+            "SUCCESS",
+            "TIMED_OUT",
+            "SOCKET_CLOSED",
+            "OPERATION_CANCELED",
+            "CONNECTION_ABORTED",
+            "FILE_LIMIT_REACHED",
+            "PERMISSION_ERROR",
+            "ALREADY_CONNECTING",
+            "CONNECTION_REFUSED",
+            "ALREADY_CONNECTED",
+            "NETWORK_UNREACHABLE",
+            "INVLID_SOCKET"
+        };
+        if (code_ < CODE_NUM) {
+            return strs[code_];
+        } else {
+            return "UNKNOWN";
+        }
     }
 private:
     error_code_t code_;

@@ -3,6 +3,7 @@
 #include <memory>
 #include "util/error_code.hpp"
 #include "util/noncopyable.hpp"
+#include "util/strand.hpp"
 namespace axon {
 namespace event {
     
@@ -25,7 +26,7 @@ public:
     // complete() calls the callback function with error codes
     virtual void complete() = 0;
 
-    Event(int fd, int type): fd_(fd), type_(type), ec_(axon::util::ErrorCode::operation_canceled) { }
+    Event(int fd, int type): fd_(fd), type_(type), ec_(axon::util::ErrorCode::operation_canceled), callback_strand_(NULL) { }
     virtual ~Event() {}
     
     // whether to try performing before registering in EventService
@@ -33,10 +34,18 @@ public:
 
     typedef std::shared_ptr<Event> Ptr;
 
+    axon::util::Strand::Ptr callback_strand() {
+        return callback_strand_;
+    }
+    void set_callback_strand(axon::util::Strand::Ptr callback_strand) {
+        callback_strand_ = callback_strand;
+    }
+
 protected:
     int fd_;
     int type_;
     axon::util::ErrorCode ec_;
+    axon::util::Strand::Ptr callback_strand_;
 
 };
 

@@ -77,13 +77,21 @@ void EventService::unregister_fd(int fd, fd_event::Ptr event) {
 void EventService::start_event(Event::Ptr event, fd_event::Ptr fd_ev) { 
     axon::util::ScopedLock lock(&fd_ev->mutex);
     if (fd_ev->closed_) {
-        fd_ev->io_service->post(std::bind(&Event::complete, event));
+        if (event->callback_strand()) {
+            event->callback_strand()->post(std::bind(&Event::complete, event));
+        } else {
+            fd_ev->io_service->post(std::bind(&Event::complete, event));
+        }
         return;
     }
 
     // Some data may have arrived before event started, try performing
     if (event->should_pre_try() && event->perform()) {
-        fd_ev->io_service->post(std::bind(&Event::complete, event));
+        if (event->callback_strand()) {
+            event->callback_strand()->post(std::bind(&Event::complete, event));
+        } else {
+            fd_ev->io_service->post(std::bind(&Event::complete, event));
+        }
         return;
     }
 
@@ -127,7 +135,7 @@ void EventService::run_loop() {
         epoll_event evs[128];
         int cnt = epoll_wait(epoll_fd_, evs, 128, -1);
         if (cnt < 0) {
-            perror("poll failed");
+            // perror("poll failed");
         }
         for (int i = 0; i < cnt; i++) {
             if (evs[i].data.ptr == &interrupt_fd_) {
@@ -176,14 +184,24 @@ void EventService::fd_event::perform(uint32_t events) {
             auto& queue = event_queues[type];
             while (!queue.empty()) {
                 if (queue.front()->perform()) {
-                    Event::Ptr done_ev = queue.front();
                     axon::service::IOService *service = io_service;
-                    service->post([done_ev, service]{
+                    Event::Ptr done_ev = queue.front();
+                    queue.pop();
+
+                    std::function<void()> completion = [done_ev, service]{
                         // Exception may be thrown from completion handler, ensure work removed
                         on_exit_remove_work r(service);
                         done_ev->complete();
-                    });
-                    queue.pop();
+                    };
+                    auto strand = done_ev->callback_strand();
+                    // done_ev must be released before posting, completion object now is the only reference holder
+                    done_ev.reset();
+                    if (strand) {
+                        strand->post(std::move(completion));
+                    } else {
+                        service->post(std::move(completion));
+                    }
+                    assert(((bool)completion) == false);
                 } else {
                     break;
                 }
@@ -197,14 +215,23 @@ void EventService::fd_event::cancel_all() {
         auto& queue = event_queues[type];
         while (!queue.empty()) {
             // post complete without performing
-            Event::Ptr done_ev = queue.front();
             axon::service::IOService *service = io_service;
-            service->post([done_ev, service]{
+            Event::Ptr done_ev = queue.front();
+            queue.pop();
+
+            auto completion = [done_ev, service]{
                 // Exception may be thrown from completion handler, ensure work removed
                 on_exit_remove_work r(service);
                 done_ev->complete();
-            });
-            queue.pop();
+            };
+            auto strand = done_ev->callback_strand();
+            // done_ev must be released before posting, completion object now is the only reference holder
+            done_ev.reset();
+            if (strand) {
+                strand->post(std::move(completion));
+            } else {
+                service->post(std::move(completion));
+            }
         }
     }
 

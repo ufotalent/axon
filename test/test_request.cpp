@@ -222,26 +222,21 @@ TEST_F(RequestTest, consistent_recv) {
         socket->start_connecting();
         Message message[10];
         int cnt = 0;
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 8; i++) {
             socket->async_recv(message[i], [&recv_coro, &message, i, socket, &cnt](const ConsistentSocket::SocketResult& sr){
                 cnt++;
-                if (cnt <= 8) {
-                    EXPECT_EQ((int)sr, ConsistentSocket::SocketResult::SUCCESS);
-                } else {
-                    EXPECT_EQ((int)sr, ConsistentSocket::SocketResult::DOWN);
-                }
+                char buf[20];
+                make_data(i, buf);
+                EXPECT_EQ((int)sr, ConsistentSocket::SocketResult::SUCCESS);
+                EXPECT_EQ(strcmp(buf, message[i].content_ptr()), 0);
                 if (!sr) {
                     printf("%d socket data: %s\n", i, message[i].content_ptr());
-                }
-                if (cnt == 8) {
-                    printf("shuting down consist socket\n");
-                    socket->shutdown();
                 }
                 recv_coro();
             });
             recv_coro.yield();
-
         }
+        socket->shutdown();
     });
     service.post([&recv_coro](){recv_coro();});
     Thread thr([&service](){service.run();});
@@ -250,10 +245,77 @@ TEST_F(RequestTest, consistent_recv) {
     printf("run finished\n");
 }
 
-TEST_F(RequestTest, consistent_shutdown) {
+TEST_F(RequestTest, consistent_send) {
     IOService service;
 
-    for (int t = 0; t < 10000; t++) {
+    Coroutine coro; 
+    coro.set_function([&service, &coro]() {
+        Timer timer(&service);
+        timer.expires_from_now(5000);
+        timer.async_wait([&coro](const ErrorCode& ec) { coro(); });
+        coro.yield();
+
+        Acceptor acceptor(&service);
+        acceptor.bind("127.0.0.1", test_port);
+        acceptor.listen();
+        for (int i = 0; i < 8; i++) {
+            axon::socket::MessageSocket socket(&service);
+            acceptor.async_accept(socket, [&coro](const ErrorCode& ec) {
+                EXPECT_EQ(ec.code(), ErrorCode::success);
+                coro();
+            });
+            coro.yield();
+            Message message;
+            socket.async_recv(message, [&coro, i, &message](const MessageSocket::MessageResult& mr) {
+                EXPECT_EQ((int)mr, MessageSocket::MessageResult::SUCCESS) ;
+                char buf[20];
+                make_data(i, buf);
+                EXPECT_EQ(strcmp(buf, message.content_ptr()), 0);
+                if (!mr) {
+                    printf("%d socket data: %s\n", i, message.content_ptr());
+                }
+                coro();
+            });
+            coro.yield();
+            // disconnect socket;
+            socket.shutdown();
+        }
+    });
+    service.post([&coro]() {coro();});
+
+    Coroutine send_coro;
+    send_coro.set_function([&service, &send_coro] {
+        Message message[10];
+        for (int i = 0; i < 8; i++) {
+            char buf[20];
+            int len = make_data(i, buf);
+            message[i].set_size(len);
+            strcpy(message[i].content_ptr(), buf);
+        }
+        int cnt = 0;
+        for (int i = 0; i < 8; i++) {
+            axon::socket::ConsistentSocket::Ptr socket = axon::socket::ConsistentSocket::create(&service, "127.0.0.1", test_port);
+            socket->start_connecting();
+            socket->async_send(message[i], [&send_coro, &message, i, socket, &cnt](const ConsistentSocket::SocketResult& sr){
+                EXPECT_EQ((int)sr, ConsistentSocket::SocketResult::SUCCESS);
+                send_coro();
+            });
+            socket.reset();
+            send_coro.yield();
+        }
+    });
+    service.post([&send_coro](){send_coro();});
+    Thread thr([&service](){service.run();});
+    service.run();
+    thr.join();
+    printf("run finished\n");
+}
+
+
+TEST_F(RequestTest, consistent_recv_shutdown) {
+    IOService service;
+
+    for (int t = 0; t < 100; t++) {
         printf("start %d ------------------------------------\n", t);
         test_port = TestUtil::available_local_port();
         Acceptor acceptor(&service);
@@ -330,3 +392,192 @@ TEST_F(RequestTest, consistent_shutdown) {
     }
 }
 
+namespace {
+const int TEST_DATA_COUNT = 100000;
+const int TEST_THREAD_COUNT = 8;
+bool socket_test_data[TEST_DATA_COUNT];
+
+bool socket_request_succeed[TEST_DATA_COUNT];
+std::atomic_int success_count;
+std::atomic_int op_count;
+}
+TEST_F(RequestTest, consistent_recv_send) {
+    IOService service;
+    test_port = TestUtil::available_local_port();
+    Acceptor acceptor(&service);
+    acceptor.bind("127.0.0.1", test_port);
+    acceptor.listen();
+
+    std::fill(socket_test_data, socket_test_data + TEST_DATA_COUNT, false);
+    std::fill(socket_request_succeed, socket_request_succeed + TEST_DATA_COUNT, false);
+    success_count = 0;
+    op_count = 0;
+
+    bool server_exit = false;
+    Coroutine coro;
+    coro.set_function([&service, &coro, &acceptor, &server_exit]() {
+        while (true) {
+            ConsistentSocket::Ptr socket = ConsistentSocket::create(&service);
+            printf("will accept\n");
+            acceptor.async_accept(socket->base_socket(), [&coro](const ErrorCode& ec) {
+                EXPECT_EQ(ec.code(), ErrorCode::success);
+                coro();
+            });
+            coro.yield();
+            socket->set_ready();
+            printf("accepted\n");
+            // this may make remote write fail
+            if (rand() % 100== 0) {
+                socket->shutdown();
+                continue;
+            }
+            while (true) {
+                Message message;
+                op_count++;
+                socket->async_recv(message, [&coro](const ConsistentSocket::SocketResult& sr) {
+                    EXPECT_EQ((int)sr, ConsistentSocket::SocketResult::SUCCESS);
+                    coro();
+                });
+                coro.yield();
+                EXPECT_EQ(message.content_length(), sizeof(int));
+                int id = *reinterpret_cast<int*>(message.content_ptr());
+                if (id >= 0)
+                    socket_test_data[id] = true;
+                // this may make remote read fail
+                if (rand() % 100== 0) {
+                    socket->shutdown();
+                    break;
+                }
+                op_count++;
+                socket->async_send(message, [&coro](const ConsistentSocket::SocketResult& sr) {
+                    EXPECT_EQ((int)sr, ConsistentSocket::SocketResult::SUCCESS);
+                    coro();
+                });
+                coro.yield();
+                if (id == -1) {
+                    printf("received termination signal\n");
+                    socket->shutdown();
+                    server_exit = true;
+                    return 0;
+                }
+            }
+
+        }
+    });
+
+    Coroutine control_coro;
+
+    ConsistentSocket::Ptr request_socket = ConsistentSocket::create(&service, "127.0.0.1", test_port);
+    Coroutine request_coro[TEST_THREAD_COUNT];
+    for (int i = 0; i < TEST_THREAD_COUNT; i++) {
+        request_coro[i].set_function([i, &request_coro, request_socket, &service, &control_coro]() {
+            while (true) {
+                Coroutine& this_coro = request_coro[i];
+                for (int s = 0; s < TEST_DATA_COUNT; s++) {
+                    if (s % TEST_THREAD_COUNT != i)
+                        continue;
+                    if (!socket_request_succeed[s]) {
+                        Message message(sizeof(int));
+                        *(reinterpret_cast<int*>(message.content_ptr())) = s;
+    
+                        ConsistentSocket::SocketResult result;
+                        op_count++;
+                        request_socket->async_send(message, [&this_coro, i, &result](const ConsistentSocket::SocketResult& sr) {
+                            result = sr;
+                            this_coro();
+                        });
+                        this_coro.yield();
+                        if (result == ConsistentSocket::SocketResult::BUFFER_FULL) {
+                            printf("buffer full\n");
+                            break;
+                        }
+                    }
+                }
+                service.post([&control_coro](){control_coro();});
+                this_coro.yield();
+            }
+        });
+    }
+
+    control_coro.set_function([&request_coro, &service, &control_coro, &request_socket, &server_exit]() {
+        while (success_count != TEST_DATA_COUNT) {
+            for (int i = 0; i < TEST_THREAD_COUNT; i++) {
+                service.post([&request_coro, i](){request_coro[i]();});
+            }
+            for (int i = 0; i < TEST_THREAD_COUNT; i++) {
+                control_coro.yield();
+            }
+            printf("success_count: %d\n", success_count.load());
+        }
+        while (true) {
+            Message message(sizeof(int));
+            *(reinterpret_cast<int*>(message.content_ptr())) = -1;
+            ConsistentSocket::SocketResult result;
+            op_count++;
+            request_socket->async_send(message, [&result, &control_coro](const ConsistentSocket::SocketResult& sr) {
+                result = sr;
+                control_coro();
+            });
+            control_coro.yield();
+            printf("sent termination signal\n");
+            Timer timer(&service);
+            timer.expires_from_now(1000);
+            timer.async_wait([&control_coro](const ErrorCode& ec){
+                control_coro();
+            });
+            control_coro.yield();
+
+            if (server_exit) {
+                service.remove_work();
+                request_socket->shutdown();
+                return;
+            }
+            request_socket->async_recv(message, [&result, &control_coro](const ConsistentSocket::SocketResult& sr) {
+                control_coro();
+            });
+            control_coro.yield();
+        }
+    });
+
+    Coroutine check_coro;
+    check_coro.set_function([request_socket, &check_coro]() {
+        while (success_count != TEST_DATA_COUNT) {
+            Message message;
+            ConsistentSocket::SocketResult result;
+            op_count++;
+            request_socket->async_recv(message,[&check_coro, &result](const ConsistentSocket::SocketResult& sr) {
+                result = sr;
+                check_coro();
+            });
+            check_coro.yield();
+            if (result == ConsistentSocket::SocketResult::SUCCESS) {
+                EXPECT_EQ(message.content_length(), sizeof(int));
+                int id = *(reinterpret_cast<int*>(message.content_ptr()));
+                if (!socket_request_succeed[id]) {
+                    socket_request_succeed[id] = true;
+                    success_count ++;
+                }
+            }
+        }
+    });
+    request_socket->start_connecting();
+    service.post([&coro](){coro();});
+    service.post([&control_coro](){control_coro();});
+    service.post([&check_coro](){check_coro();});
+
+    service.add_work();
+    Thread* threads[TEST_THREAD_COUNT];
+    for (int i = 0; i < TEST_THREAD_COUNT; i++) {
+        threads[i] = new Thread([&service](){service.run();});
+    }
+    service.run();
+    for (int i = 0; i < TEST_THREAD_COUNT; i++) {
+        threads[i]->join();
+        delete threads[i];
+    }
+    EXPECT_EQ(success_count.load(), TEST_DATA_COUNT);
+    for (int i = 0; i < TEST_DATA_COUNT; i++) {
+        EXPECT_EQ(socket_test_data[i], true);
+    }
+    printf("op count %d\n", op_count.load());
+}

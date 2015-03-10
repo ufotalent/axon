@@ -14,6 +14,7 @@
 #include "util/coroutine.hpp"
 #include "util/timer.hpp"
 #include "util/thread.hpp"
+#include "util/strand.hpp"
 
 using namespace axon::service;
 using namespace axon::ip::tcp;
@@ -64,6 +65,8 @@ TEST_F(MiscTest, corotine) {
     int val = 0;
     Coroutine coro;
     std::function<void()> func = [&val, &coro] {
+        int stack = 0;
+        printf("stack addr %p\n", &stack);
         val++;
         coro.yield();
         val++;
@@ -156,4 +159,207 @@ TEST_F(MiscTest, multiple_timer) {
     for (int i = 0; i < timer_count; i++) {
         delete timers[i];
     }
+}
+
+TEST_F(MiscTest, nested_coro) {
+    Coroutine coro1;
+    Coroutine coro2;
+    int n = 0;
+    coro2.set_function([&coro2, &n]() {
+        n++;
+        coro2.yield();
+        n++;
+        coro2.yield();
+        n++;
+    });
+    coro1.set_function([&coro1, &coro2]() {
+        coro2();
+        coro1.yield();
+        coro2();
+        coro1.yield();
+        coro2();
+    });
+    coro1();
+    EXPECT_EQ(n, 1);
+    coro1();
+    EXPECT_EQ(n, 2);
+    coro1();
+    EXPECT_EQ(n, 3);
+}
+
+TEST_F(MiscTest, coro_speed) {
+    Coroutine coro;
+    int n = 0;
+    coro.set_function([&coro, &n]() {
+        while (true) {
+            n++;
+            coro.yield();
+        }
+    });
+    for (int i = 0; i < 10000000; i++) {
+        coro();
+    }
+    EXPECT_EQ(n, 10000000);
+}
+
+namespace {
+    int counter;
+}
+TEST_F(MiscTest, spinlock) {
+    counter = 0;
+    Thread *thrs[8];
+    axon::util::SpinLock lock;
+    for (int i = 0; i < 8; i++) {
+        thrs[i] = new Thread([&lock](){
+            for (int s = 0; s < 1000000; s++) {
+                lock.lock();
+                counter++;
+                lock.unlock();
+            }
+        });
+    }
+    for (int i = 0; i < 8; i++) {
+        thrs[i]->join();
+        delete thrs[i];
+    }
+    EXPECT_EQ(counter, 8 * 1000000);
+}
+
+TEST_F(MiscTest, strand_order) {
+    Thread *thrs[1];
+    IOService service;
+    Strand::Ptr strand = Strand::create(&service);
+    int last = -1;
+    for (int i = 0; i < 1; i++) {
+        thrs[i] = new Thread([&strand, &last, &service](){
+            for (int s = 0; s < 1000000; s++) {
+                strand->post([s, &last]() {
+                    EXPECT_EQ(last + 1, s);
+                    last = s;
+                });
+            }
+            service.remove_work();
+        });
+    }
+    service.add_work();
+    service.run();
+    for (int i = 0; i < 1; i++) {
+        thrs[i]->join();
+        delete thrs[i];
+    }
+    EXPECT_EQ(last, 1 * 1000000 - 1);
+}
+
+TEST_F(MiscTest, strand_check_syncd) {
+    IOService service;
+    Strand::Ptr strand = Strand::create(&service);
+    int counter = 0;
+    const int n_produce = 8;
+    const int n_dispatch = 0;
+    const int n_wrap = 0;
+    const int n_run = 8;
+    const int nn = 100000;
+    Thread *thrs[n_produce];
+    for (int i = 0; i < n_produce; i++) {
+        thrs[i] = new Thread([&strand, &counter, &service](){
+            for (int s = 0; s < nn; s++) {
+                strand->post([&counter]() {
+                    counter++;
+                });
+            }
+            service.remove_work();
+            printf("producer done\n");
+        });
+    }
+    Thread *thrs_dis[n_dispatch];
+    for (int i = 0; i < n_dispatch; i++) {
+        thrs_dis[i] = new Thread([&strand, &counter, &service](){
+            for (int s = 0; s < nn; s++) {
+                strand->dispatch([&counter]() {
+                    counter++;
+                });
+            }
+            service.remove_work();
+            printf("dispatcher done\n");
+        });
+    }
+    Thread *thrs_wrap[n_wrap];
+    for (int i = 0; i < n_wrap; i++) {
+        thrs_wrap[i] = new Thread([&strand, &counter, &service](){
+            for (int s = 0; s < nn; s++) {
+                service.post(strand->wrap(std::function<void()>([&counter](){
+                    counter++;
+                })));
+            }
+            service.remove_work();
+            printf("wrapper done\n");
+        });
+    }
+    for (int i = 0; i < n_produce + n_dispatch + n_wrap; i++) {
+        service.add_work();
+    }
+    Thread *run_thrs[n_run];
+    for (int i = 0; i < n_run; i++) {
+        run_thrs[i] = new Thread(std::bind(&IOService::run, &service));
+    }
+    for (int i = 0; i < n_dispatch; i++) {
+        thrs_dis[i]->join();
+        delete thrs_dis[i];
+    }
+    for (int i = 0; i < n_produce; i++) {
+        thrs[i]->join();
+        delete thrs[i];
+    }
+    for (int i = 0; i < n_wrap; i++) {
+        thrs_wrap[i]->join();
+        delete thrs_wrap[i];
+    }
+    for (int i = 0; i < n_run; i++) {
+        run_thrs[i]->join();
+        delete run_thrs[i];
+    }
+    EXPECT_EQ(counter, (n_produce + n_dispatch + n_wrap) * nn);
+}
+
+TEST_F(MiscTest, strand_check_done) {
+    IOService service;
+    Strand::Ptr strand = Strand::create(&service);
+    const int n_produce = 1;
+    const int n_run = 4;
+    const int nn = 1000000;
+
+    for (int s = 0; s < 10; s++) {
+        int counter = 0;
+        Coroutine coros[n_produce];
+	    for (int i = 0; i < n_produce; i++) {
+	        coros[i].set_function([&strand, &counter, &service, &coros, i](){
+	            for (int s = 0; s < nn; s++) {
+	                counter++;
+	                service.post([&strand, &counter, &coros, i]() {
+                        strand->post([&counter, &coros, i]() {
+	                        coros[i]();
+    	                });
+                    });
+	                coros[i].yield();
+	            }
+	            service.remove_work();
+	        });
+	        strand->post([&coros, i]() {
+	            coros[i]();
+	        });
+	    }
+	    for (int i = 0; i < n_produce; i++) {
+	        service.add_work();
+	    }
+	    Thread *run_thrs[n_run];
+	    for (int i = 0; i < n_run; i++) {
+	        run_thrs[i] = new Thread(std::bind(&IOService::run, &service));
+	    }
+	    for (int i = 0; i < n_run; i++) {
+	        run_thrs[i]->join();
+	        delete run_thrs[i];
+	    }
+	    EXPECT_EQ(counter, (n_produce) * nn);
+        LOG_INFO("done %d", s);
+	}
 }

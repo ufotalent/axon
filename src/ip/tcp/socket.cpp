@@ -48,7 +48,7 @@ void Socket::connect(std::string remote_addr, uint32_t port) {
     }
 }
 
-void Socket::async_connect(std::string remote_addr, uint32_t port, CallBack callback) {
+void Socket::async_connect(std::string remote_addr, uint32_t port, CallBack callback, axon::util::Strand::Ptr callback_strand) {
     // create a new NON_BLOCKING fd 
     shutdown();
     fd_ = socket(AF_INET, SOCK_STREAM, 0);
@@ -66,6 +66,7 @@ void Socket::async_connect(std::string remote_addr, uint32_t port, CallBack call
     }
 
     axon::event::ConnectEvent::Ptr ev(new axon::event::ConnectEvent(fd_, callback));
+    ev->set_callback_strand(callback_strand);
     ev_service_->start_event(ev, fd_ev_);
 }
 void Socket::assign(int fd) {

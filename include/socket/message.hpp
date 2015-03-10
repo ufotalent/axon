@@ -19,10 +19,13 @@ public:
     // create from raw data, including header
     Message(const char* data, uint32_t len);
 
+    void set_size(uint32_t content_length);
+
     void set_data(const char* data, uint32_t len);
 
     MessageHeader* header() { return reinterpret_cast<MessageHeader*>(&holder_[0]);}
     const MessageHeader* header() const { return reinterpret_cast<const MessageHeader*>(&holder_[0]);}
+    const char* content_ptr() const { return (&holder_[0]) + sizeof(MessageHeader);}
     char* content_ptr() { return (&holder_[0]) + sizeof(MessageHeader);}
     uint32_t content_length() const { return holder_.size() - sizeof(MessageHeader);}
 

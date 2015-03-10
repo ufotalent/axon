@@ -11,6 +11,7 @@
 #include "util/noncopyable.hpp"
 #include "util/completion_condition.hpp"
 #include "util/error_code.hpp"
+#include "util/strand.hpp"
 
 namespace axon {
 namespace ip {
@@ -19,10 +20,10 @@ class Socket: public axon::util::Noncopyable {
 public:
     typedef std::function<void(const axon::util::ErrorCode&, size_t)> CallBack;
     Socket(axon::service::IOService* io_service);
-    ~Socket();
+    virtual ~Socket();
 
     template <class Buffer>
-    void async_recv(Buffer& buf, CallBack callback) {
+    void async_recv(Buffer& buf, CallBack callback, axon::util::Strand::Ptr callback_strand = NULL) {
         if (is_down_.load()) {
             io_service_->post(std::bind(callback, axon::util::ErrorCode::invalid_socket, 0));
             return;
@@ -31,12 +32,13 @@ public:
                 fd_, 
                 axon::event::Event::EVENT_TYPE_READ,
                 buf,
-                callback));
+                std::move(callback)));
+        ev->set_callback_strand(callback_strand);
         ev_service_->start_event(ev, fd_ev_);
     }
 
     template <class Buffer, class CompletionCondition>
-    void async_recv_until(Buffer& buf, CallBack callback, CompletionCondition condition) {
+    void async_recv_until(Buffer& buf, CallBack callback, CompletionCondition condition, axon::util::Strand::Ptr callback_strand = NULL) {
         if (is_down_.load()) {
             io_service_->post(std::bind(callback, axon::util::ErrorCode::invalid_socket, 0));
             return;
@@ -45,30 +47,32 @@ public:
                 fd_, 
                 axon::event::Event::EVENT_TYPE_READ,
                 buf,
-                callback,
+                std::move(callback),
                 condition));
+        ev->set_callback_strand(callback_strand);
         ev_service_->start_event(ev, fd_ev_);
     }
 
     template <class Buffer>
-    void async_recv_all(Buffer& buf, CallBack callback) {
-        async_recv_until(buf, callback, axon::util::AtLeast(buf.write_size()));
+    void async_recv_all(Buffer& buf, CallBack callback, axon::util::Strand::Ptr callback_strand = NULL) {
+        async_recv_until(buf, std::move(callback), axon::util::AtLeast(buf.write_size()), callback_strand);
     }
 
     template <class Buffer>
-    void async_send(Buffer& buf, CallBack callback) {
+    void async_send(Buffer& buf, CallBack callback, axon::util::Strand::Ptr callback_strand = NULL) {
         if (is_down_.load()) {
             io_service_->post(std::bind(callback, axon::util::ErrorCode::invalid_socket, 0));
             return;
         }
         typename axon::event::SendEvent<Buffer>::Ptr ev(new axon::event::SendEvent<Buffer>(
                 fd_, 
-                axon::event::Event::EVENT_TYPE_WRITE, buf, callback));
+                axon::event::Event::EVENT_TYPE_WRITE, buf, std::move(callback)));
+        ev->set_callback_strand(callback_strand);
         ev_service_->start_event(ev, fd_ev_);
     }
 
     template <class Buffer, class CompletionCondition>
-    void async_send_until(Buffer& buf, CallBack callback, CompletionCondition condition) {
+    void async_send_until(Buffer& buf, CallBack callback, CompletionCondition condition, axon::util::Strand::Ptr callback_strand = NULL) {
         if (is_down_.load()) {
             io_service_->post(std::bind(callback, axon::util::ErrorCode::invalid_socket, 0));
             return;
@@ -77,18 +81,19 @@ public:
                 fd_, 
                 axon::event::Event::EVENT_TYPE_WRITE,
                 buf,
-                callback,
+                std::move(callback),
                 condition));
+        ev->set_callback_strand(callback_strand);
         ev_service_->start_event(ev, fd_ev_);
     }
 
     template <class Buffer>
-    void async_send_all(Buffer& buf, CallBack callback) {
-        async_send_until(buf, callback, axon::util::AtLeast(buf.read_size()));
+    void async_send_all(Buffer& buf, CallBack callback, axon::util::Strand::Ptr callback_strand = NULL) {
+        async_send_until(buf, std::move(callback), axon::util::AtLeast(buf.read_size()), callback_strand);
     }
 
     void connect(std::string remote_addr, uint32_t port);
-    void async_connect(std::string remote_addr, uint32_t port, CallBack callback);
+    void async_connect(std::string remote_addr, uint32_t port, CallBack callback, axon::util::Strand::Ptr callback_strand = NULL);
     void assign(int fd);
     void shutdown();
 

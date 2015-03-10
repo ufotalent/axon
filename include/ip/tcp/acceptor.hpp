@@ -15,12 +15,14 @@ public:
     void bind(std::string addr, uint32_t port);
     void listen();
     void accept(Socket &sock);
+    void shutdown();
 
     void async_accept(Socket &sock, CallBack callback);
     Acceptor(axon::service::IOService* io_service);
     virtual ~Acceptor();
 private:
     bool block_;
+    bool shutdown_;
     int fd_;
     sockaddr_in addr_;
 

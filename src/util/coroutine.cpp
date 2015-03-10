@@ -1,7 +1,9 @@
 #include "util/coroutine.hpp"
 #include <sys/mman.h>
 #include <cstdlib>
+#include <cstdio>
 #include <boost/context/all.hpp>
+#include <stdexcept>
 #include "util/lock.hpp"
 #include "util/util.hpp"
 
